@@ -1,33 +1,134 @@
 /* ======================================================
    PERMINTAAN BARANG TOKO
-   MASTER APPLICATION LOGIC & LOCALSTORAGE DATABASE ENGINE
+   MASTER APPLICATION LOGIC & SUPABASE DATABASE ENGINE
 ====================================================== */
 
-// STORAGE KEYS
-const USERS_DB_KEY = 'STORE_USERS_DB_V5';
-const REQUESTS_DB_KEY = 'STORE_REQUESTS_DB_V5';
-const CHAT_DB_KEY = 'STORE_CHAT_DB_V5';
-const CHAT_ROOM_DB_KEY = 'STORE_CHAT_ROOM_DB_V5';
-const TTD_DB_KEY = 'STORE_TTD_DB_V5';
-const SESSION_KEY = 'STORE_ACTIVE_SESSION_V5';
-const THEME_KEY = 'STORE_ACTIVE_THEME_V5';
-const STORES_DB_KEY = 'STORE_CUSTOM_TOKO_LIST_V5';
-const DELETED_STORES_KEY = 'STORE_DELETED_TOKO_LIST_V5';
-const NOTIFICATIONS_DB_KEY = 'STORE_SYSTEM_NOTIFICATIONS_V5';
-const KODE_UNIT_MAP_KEY = 'STORE_KODE_UNIT_MAP_V5';
-const FEATURE_PHOTOS_KEY = 'STORE_FEATURE_PHOTOS_V5';
-const DELETED_REQUESTS_KEY = 'STORE_DELETED_REQUESTS_V5';
-const DELETED_USERS_KEY = 'STORE_DELETED_USERS_V5';
+// STORAGE KEYS (V7_HARD_RESET_CLEAN)
+const USERS_DB_KEY = 'STORE_USERS_DB_V7_CLEAN';
+const REQUESTS_DB_KEY = 'STORE_REQUESTS_DB_V7_CLEAN';
+const CHAT_DB_KEY = 'STORE_CHAT_DB_V7_CLEAN';
+const CHAT_ROOM_DB_KEY = 'STORE_CHAT_ROOM_DB_V7_CLEAN';
+const TTD_DB_KEY = 'STORE_TTD_DB_V7_CLEAN';
+const SESSION_KEY = 'STORE_ACTIVE_SESSION_V7_CLEAN';
+const THEME_KEY = 'STORE_ACTIVE_THEME_V7_CLEAN';
+const STORES_DB_KEY = 'STORE_CUSTOM_TOKO_LIST_V7_CLEAN';
+const DELETED_STORES_KEY = 'STORE_DELETED_TOKO_LIST_V7_CLEAN';
+const NOTIFICATIONS_DB_KEY = 'STORE_SYSTEM_NOTIFICATIONS_V7_CLEAN';
+const KODE_UNIT_MAP_KEY = 'STORE_KODE_UNIT_MAP_V7_CLEAN';
+const FEATURE_PHOTOS_KEY = 'STORE_FEATURE_PHOTOS_V7_CLEAN';
+const DELETED_REQUESTS_KEY = 'STORE_DELETED_REQUESTS_V7_CLEAN';
+const DELETED_USERS_KEY = 'STORE_DELETED_USERS_V7_CLEAN';
+const FONTE_TOKEN_KEY = 'STORE_FONTE_TOKEN_KEY_V7_CLEAN';
+const ADMIN_REMINDER_KEY = 'STORE_ADMIN_REMINDER_KEY_V7_CLEAN';
+const ADMIN_SECRET_KEY_STORAGE_KEY = 'STORE_ADMIN_SECRET_KEY_V7_CLEAN';
+const ADMIN_SCRIPT_URL_KEY = 'STORE_ADMIN_SCRIPT_URL_V7_CLEAN';
+const FIREBASE_USER_CONFIG_KEY = 'STORE_FIREBASE_USER_CONFIG_V7_CLEAN';
+
+if (!window.appStorage) {
+  const fallbackMemory = {};
+  window.appStorage = {
+    getItem(key) {
+      try {
+        const val = localStorage.getItem(key);
+        if (val !== null) return val;
+      } catch (e) {}
+      return Object.prototype.hasOwnProperty.call(fallbackMemory, key) ? String(fallbackMemory[key]) : null;
+    },
+    setItem(key, value) {
+      try {
+        localStorage.setItem(key, String(value));
+      } catch (e) {}
+      fallbackMemory[key] = String(value);
+    },
+    removeItem(key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {}
+      delete fallbackMemory[key];
+    },
+    clear() {
+      try {
+        localStorage.clear();
+      } catch (e) {}
+      Object.keys(fallbackMemory).forEach(key => delete fallbackMemory[key]);
+    }
+  };
+}
+
+function getSavedAdminSecretKey() {
+  return (appStorage.getItem(ADMIN_SECRET_KEY_STORAGE_KEY) || '').trim();
+}
+
+function saveAdminSecretKey(secretKey) {
+  const cleanKey = (secretKey || '').trim();
+  if (cleanKey) {
+    appStorage.setItem(ADMIN_SECRET_KEY_STORAGE_KEY, cleanKey);
+  } else {
+    appStorage.removeItem(ADMIN_SECRET_KEY_STORAGE_KEY);
+  }
+}
+
+function loadSavedAdminSecretKey() {
+  const input = document.getElementById('adminSecretKeySettingInput');
+  if (input) {
+    input.value = getSavedAdminSecretKey();
+  }
+}
+
+function simpanAdminSecretKey() {
+  const input = document.getElementById('adminSecretKeySettingInput');
+  const value = input ? input.value.trim() : '';
+  saveAdminSecretKey(value);
+  showNotif(value ? 'SECRET KEY SUPABASE BERHASIL DISIMPAN!' : 'SECRET KEY SUPABASE DIHAPUS!', 'info');
+}
 
 function getSystemNotifications() {
-  return JSON.parse(localStorage.getItem(NOTIFICATIONS_DB_KEY) || '[]');
+  return JSON.parse(appStorage.getItem(NOTIFICATIONS_DB_KEY) || '[]');
+}
+
+function shouldEmitImportantNotification(targetRoles, targetArea, message, noSurat = '') {
+  const normalized = String(message || '').trim();
+  if (!normalized) return false;
+
+  const importantPatterns = [
+    'PERMINTAAN BARU',
+    'DISETUJUI SERVICE',
+    'APPROVAL DM',
+    'MOHON APPROVAL DM',
+    'DITOLAK',
+    'SELESAI (DONE)',
+    'REMINDER PENDING'
+  ];
+
+  const containsImportant = importantPatterns.some(pattern => normalized.toUpperCase().includes(pattern));
+  if (!containsImportant) return false;
+
+  const noSuratKey = String(noSurat || '').trim();
+  if (noSuratKey && noSuratKey.startsWith('PRMT/')) {
+    return true;
+  }
+
+  return true;
 }
 
 function tambahNotifikasiSistem(targetRoles, targetArea, message, noSurat = '') {
+  if (!shouldEmitImportantNotification(targetRoles, targetArea, message, noSurat)) {
+    return;
+  }
+
   const notifs = getSystemNotifications();
+  const normalizedRoles = Array.isArray(targetRoles) ? targetRoles : [targetRoles];
+  const dedupeKey = `${String(noSurat || '').trim()}|${String(targetArea || 'ALL')}|${String(message || '').trim()}`;
+  const alreadyExists = notifs.some(n => {
+    const nKey = `${String(n.noSurat || '').trim()}|${String(n.targetArea || 'ALL')}|${String(n.message || '').trim()}`;
+    return nKey === dedupeKey;
+  });
+
+  if (alreadyExists) return;
+
   const newNotif = {
     id: `NTF-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-    targetRoles: Array.isArray(targetRoles) ? targetRoles : [targetRoles],
+    targetRoles: normalizedRoles,
     targetArea: targetArea || 'ALL',
     message: message,
     noSurat: noSurat,
@@ -36,7 +137,7 @@ function tambahNotifikasiSistem(targetRoles, targetArea, message, noSurat = '') 
   };
   notifs.unshift(newNotif);
   if (notifs.length > 100) notifs.pop();
-  localStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify(notifs));
+  appStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify(notifs));
   pushCentralCloudDB();
   updateNotifBellCounter();
 }
@@ -44,16 +145,116 @@ function tambahNotifikasiSistem(targetRoles, targetArea, message, noSurat = '') 
 function getAccessibleNotifications() {
   if (!currentUser) return [];
   const notifs = getSystemNotifications();
+  const userCat = String(currentUser.category || '').toUpperCase();
+  const userArea = String(currentUser.area || '').toUpperCase();
+  const userUname = String(currentUser.username || '').toUpperCase();
+  const userFullName = String(currentUser.fullName || '').toUpperCase();
+  const isSysAdmin = userCat === 'ADMIN' || userUname === 'ADMIN';
 
-  return notifs.filter(n => {
-    const areaMatch = (n.targetArea === 'ALL' || currentUser.category === 'DM' || n.targetArea === currentUser.area);
-    const roleMatch = (
-      n.targetRoles.includes('ALL') ||
-      n.targetRoles.includes(currentUser.category) ||
-      (currentUser.category === 'TOKO' && n.targetRoles.includes('TOKO'))
-    );
-    return areaMatch && roleMatch;
+  const requests = getRequestsFromDB();
+
+  let filtered = notifs.filter(n => {
+    if (!n) return false;
+
+    if (isSysAdmin) return true;
+
+    // 1. FILTER AREA PER LOGGED-IN ACCOUNT
+    const targetArea = String(n.targetArea || 'ALL').toUpperCase();
+    const areaMatch = (targetArea === 'ALL' || targetArea === userArea || userArea === 'ALL');
+    if (!areaMatch) return false;
+
+    // 2. FILTER ROLE / PER LOGIN CATEGORY
+    const targetRoles = Array.isArray(n.targetRoles) ? n.targetRoles.map(r => String(r).toUpperCase()) : [];
+    const roleMatch = (targetRoles.includes('ALL') || targetRoles.includes(userCat));
+    if (!roleMatch) return false;
+
+    // 3. STRICT TOKO / SALES FILTER: Only show notification if request belongs to this logged-in TOKO/SALES user
+    if (userCat === 'TOKO' || userCat === 'SALES') {
+      if (n.noSurat) {
+        const req = requests.find(r => r.noSurat === n.noSurat);
+        if (req) {
+          const isMyRequest = (
+            req.userId === currentUser.id ||
+            String(req.createdBy || '').toUpperCase() === userUname ||
+            String(req.createdBy || '').toUpperCase() === userFullName ||
+            String(req.toko || '').toUpperCase() === userFullName
+          );
+          if (!isMyRequest) return false;
+        }
+      }
+    }
+
+    // 4. STRICT SERVICE AREA FILTER: Only show notifications for requests in currentUser's area
+    if (userCat === 'SERVICE') {
+      if (n.noSurat) {
+        const req = requests.find(r => r.noSurat === n.noSurat);
+        if (req && req.area && req.area.toUpperCase() !== userArea && userArea !== 'ALL') {
+          return false;
+        }
+      }
+    }
+
+    return true;
   });
+
+  // SINTESIS STATUS TRANSAKSI PENDING UNTUK USER TOKO / SALES ONLY
+  if (userCat === 'TOKO' || userCat === 'SALES') {
+    const tokoPendingReqs = requests.filter(r => {
+      const isMine = (
+        r.userId === currentUser.id ||
+        String(r.createdBy || '').toUpperCase() === userUname ||
+        String(r.createdBy || '').toUpperCase() === userFullName ||
+        String(r.toko || '').toUpperCase() === userFullName
+      );
+      return isMine && r.status === 'PENDING';
+    });
+
+    tokoPendingReqs.forEach(r => {
+      const exists = filtered.some(n => n.noSurat === r.noSurat);
+      if (!exists) {
+        const stageMsg = r.serviceApprove ? 'SEDANG MENUNGGU APPROVAL DM' : 'SEDANG MENUNGGU APPROVAL SERVICE';
+        filtered.unshift({
+          id: `NTF-TK-${r.noSurat}`,
+          targetRoles: ['TOKO', 'SALES'],
+          targetArea: r.area || userArea,
+          message: `PERMINTAAN Anda #${r.noSurat} (${stageMsg}).`,
+          noSurat: r.noSurat,
+          time: r.tanggalInput || r.createdAt || getFormattedDateDDMMYYYY(),
+          readBy: []
+        });
+      }
+    });
+  }
+
+  return filtered;
+}
+
+let globalRealtimeLoopInterval = null;
+
+function startGlobalRealtimeLoop() {
+  if (globalRealtimeLoopInterval) return;
+
+  globalRealtimeLoopInterval = setInterval(() => {
+    if (!currentUser || (document.getElementById('loginPage') && document.getElementById('loginPage').classList.contains('active'))) return;
+
+    // 1. UPDATE LONCENG NOTIFIKASI & ANGKA JUMLAH
+    if (typeof updateNotifBellCounter === 'function') {
+      updateNotifBellCounter();
+    }
+
+    // 2. UPDATE BADGE CHAT BANTUAN UNREAD
+    if (typeof cekUnreadNotif === 'function') {
+      cekUnreadNotif();
+    }
+
+    // 3. REFRESH LIST NOTIFIKASI JIKA POPUP NOTIF TERBUKA
+    const popupNotifList = document.getElementById('popupNotifList');
+    if (popupNotifList && (popupNotifList.classList.contains('show') || popupNotifList.style.display === 'flex')) {
+      if (typeof loadNotificationList === 'function') {
+        loadNotificationList();
+      }
+    }
+  }, 3000);
 }
 
 function updateNotifBellCounter() {
@@ -61,7 +262,7 @@ function updateNotifBellCounter() {
   const badgeEl = document.getElementById('notifBellBadge');
   if (!bellBtn || !badgeEl) return;
 
-  if (!currentUser || document.getElementById('loginPage').classList.contains('active')) {
+  if (!currentUser || (document.getElementById('loginPage') && document.getElementById('loginPage').classList.contains('active'))) {
     bellBtn.style.display = 'none';
     return;
   }
@@ -69,7 +270,10 @@ function updateNotifBellCounter() {
   bellBtn.style.display = 'flex';
 
   const userNotifs = getAccessibleNotifications();
-  const unreadCount = userNotifs.filter(n => !n.readBy.includes(currentUser.id) && !n.readBy.includes(currentUser.username)).length;
+  const unreadCount = userNotifs.filter(n => {
+    if (!n || !n.readBy) return true;
+    return !n.readBy.includes(currentUser.id) && !n.readBy.includes(currentUser.username);
+  }).length;
 
   if (unreadCount > 0) {
     badgeEl.textContent = unreadCount > 99 ? '99+' : unreadCount;
@@ -83,9 +287,16 @@ function bukaNotificationModal() {
   const popup = document.getElementById('popupNotifList');
   if (!popup) return;
 
-  loadNotificationList();
+  if (typeof loadNotificationList === 'function') {
+    loadNotificationList();
+  }
+
   popup.style.display = 'flex';
   popup.classList.add('show');
+  
+  if (typeof pushPopupHistoryState === 'function') {
+    pushPopupHistoryState();
+  }
 }
 
 function tutupNotificationModal() {
@@ -144,16 +355,38 @@ function loadNotificationList() {
 }
 
 function clickNotificationItem(notifId, noSurat) {
-  markNotifAsRead(notifId);
-  tutupNotificationModal();
+  markNotifAsRead(notifId, noSurat);
+
+  const notifListPopup = document.getElementById('popupNotifList');
+  if (notifListPopup) {
+    notifListPopup.style.display = 'none';
+    notifListPopup.classList.remove('show');
+  }
+
   if (noSurat) {
-    lihatDetail(noSurat, true);
+    setTimeout(() => {
+      lihatDetail(noSurat, true);
+    }, 150);
   }
 }
 
-function markNotifAsRead(notifId) {
-  const notifs = getSystemNotifications();
+function markNotifAsRead(notifId, noSurat = '') {
+  let notifs = getSystemNotifications();
   const idx = notifs.findIndex(n => n.id === notifId);
+
+  const targetNoSurat = noSurat || (idx !== -1 ? notifs[idx].noSurat : '');
+  const requests = getRequestsFromDB();
+  const req = requests.find(r => r.noSurat === targetNoSurat);
+
+  // JIKA STATUS PERMINTAAN SUDAH APPROVE, REJECT, ATAU DONE -> OTOMATIS HAPUS DARI PENYIMPANAN LOKAL & DATABASE CLOUD
+  if (req && (req.status === 'APPROVE' || req.status === 'REJECT' || req.status === 'DONE')) {
+    notifs = notifs.filter(n => n.id !== notifId && n.noSurat !== targetNoSurat);
+    appStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify(notifs));
+    if (typeof pushCentralCloudDB === 'function') pushCentralCloudDB();
+    updateNotifBellCounter();
+    return;
+  }
+
   if (idx !== -1) {
     if (!notifs[idx].readBy.includes(currentUser.id)) {
       notifs[idx].readBy.push(currentUser.id);
@@ -161,7 +394,8 @@ function markNotifAsRead(notifId) {
     if (!notifs[idx].readBy.includes(currentUser.username)) {
       notifs[idx].readBy.push(currentUser.username);
     }
-    localStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify(notifs));
+    appStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify(notifs));
+    if (typeof pushCentralCloudDB === 'function') pushCentralCloudDB();
     updateNotifBellCounter();
   }
 }
@@ -173,7 +407,7 @@ function markAllNotifAsRead() {
     if (!n.readBy.includes(currentUser.id)) n.readBy.push(currentUser.id);
     if (!n.readBy.includes(currentUser.username)) n.readBy.push(currentUser.username);
   });
-  localStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify(notifs));
+  appStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify(notifs));
   updateNotifBellCounter();
   loadNotificationList();
   showNotif('SEMUA NOTIFIKASI DITANDAI DIBACA!', 'info');
@@ -193,22 +427,40 @@ function generateStoreCode(namaToko) {
 }
 
 function getStoresFromDB() {
-  const localStores = JSON.parse(localStorage.getItem(STORES_DB_KEY) || '[]');
-  const deletedStoreKeys = JSON.parse(localStorage.getItem(DELETED_STORES_KEY) || '[]');
+  const localStores = JSON.parse(appStorage.getItem(STORES_DB_KEY) || '[]');
+  const deletedStoreKeys = JSON.parse(appStorage.getItem(DELETED_STORES_KEY) || '[]');
+  const safeDeletedKeys = Array.isArray(deletedStoreKeys) ? deletedStoreKeys : [];
   const users = getUsersFromDB();
-  const userStores = users.filter(u => u.category === 'TOKO').map(u => ({
+  const userStores = users.filter(u => u && u.category === 'TOKO').map(u => ({
     id: u.id,
-    fullName: u.fullName,
-    area: u.area,
-    storeCode: u.storeCode || generateStoreCode(u.fullName)
+    fullName: u.fullName || 'TOKO',
+    area: u.area || '',
+    storeCode: u.storeCode || generateStoreCode(u.fullName || '')
   }));
 
   const map = new Map();
-  userStores.forEach(s => map.set(`${s.fullName.toUpperCase()}_${s.area}`, s));
-  localStores.forEach(s => map.set(`${s.fullName.toUpperCase()}_${s.area}`, s));
+  userStores.forEach(s => {
+    if (s && s.fullName) {
+      const key = `${String(s.fullName).toUpperCase()}_${String(s.area || '').toUpperCase()}`;
+      map.set(key, s);
+    }
+  });
+
+  if (Array.isArray(localStores)) {
+    localStores.forEach(s => {
+      if (s && s.fullName) {
+        const key = `${String(s.fullName).toUpperCase()}_${String(s.area || '').toUpperCase()}`;
+        map.set(key, s);
+      }
+    });
+  }
 
   const allStores = Array.from(map.values());
-  return allStores.filter(s => !deletedStoreKeys.includes(`${s.fullName.toUpperCase()}_${s.area}`));
+  return allStores.filter(s => {
+    if (!s || !s.fullName) return false;
+    const key = `${String(s.fullName).toUpperCase()}_${String(s.area || '').toUpperCase()}`;
+    return !safeDeletedKeys.includes(key);
+  });
 }
 
 // 10 THEME MODES
@@ -235,169 +487,28 @@ const AREA_MAP = {
   TSM: 'TASIKMALAYA (TSM)'
 };
 
-// KNOWN UNIT TYPE LOOKUP DATABASE
-const KODE_UNIT_MAP = {
-  'AC09': 'AC-09V4-INV (1 PK INVERTER)',
-  'AC05': 'AC-05V4-STD (0.5 PK STANDARD)',
-  'TV50': 'TV-50X8000-LED 4K SMART',
-  'TV43': 'TV-43X7000-LED FULL HD',
-  'REF2': 'REF-2D-210L (KULKAS 2 PINTU)',
-  'WASH': 'WM-FL-8500 (MESIN CUCI FRONT LOAD)',
-  'SNBD': 'AC-09V4-INV (AIR CONDITIONER)',
-  'SNCR': 'REF-2D-210L (REFRIGERATOR)'
-};
+const KODE_UNIT_MAP = {};
 
-// SEED USERS DATABASE
 const SEED_USERS = [
   {
     id: 'USR-ADMIN',
     username: 'ADMIN',
-    password: 'xxx',
-    fullName: 'SUPER ADMINISTRATOR PUSAT',
-    phone: '081299990000',
+    password: '0',
+    fullName: 'SUPER ADMIN',
+    phone: '',
     category: 'ADMIN',
-    area: 'ALL',
-    createdAt: '30/07/2026'
-  },
-  {
-    id: 'USR-001',
-    username: 'TSM',
-    password: '1',
-    fullName: 'BAUT ADHI WISMANTORO (SERVICE TSM)',
-    phone: '081234567890',
-    category: 'SERVICE',
     area: 'TSM',
-    createdAt: '30/07/2026'
-  },
-  {
-    id: 'USR-002',
-    username: 'DM_PUSAT',
-    password: '123',
-    fullName: 'BAPAK HENDRA (DM PUSAT)',
-    phone: '081288887777',
-    category: 'DM',
-    area: 'BDG',
-    createdAt: '30/07/2026'
-  },
-  {
-    id: 'USR-003',
-    username: 'SERVICE_BDG',
-    password: '123',
-    fullName: 'ISBIANTA (SERVICE SUPERVISOR BDG)',
-    phone: '081277776666',
-    category: 'SERVICE',
-    area: 'BDG',
-    createdAt: '30/07/2026'
-  },
-  {
-    id: 'USR-004',
-    username: 'SALES_BDG',
-    password: '123',
-    fullName: 'RIAN (SALES EXECUTIVE BDG)',
-    phone: '081266665555',
-    category: 'SALES',
-    area: 'BDG',
-    createdAt: '30/07/2026'
-  },
-  {
-    id: 'USR-005',
-    username: 'TOKO_SINAR',
-    password: '123',
-    fullName: 'TOKO SINAR ABADI',
-    storeCode: 'SNR',
-    phone: '081255554444',
-    category: 'TOKO',
-    area: 'BDG',
-    createdAt: '30/07/2026'
-  },
-  {
-    id: 'USR-006',
-    username: 'TOKO_CRB',
-    password: '123',
-    fullName: 'TOKO CIREBON PERDANA',
-    storeCode: 'CRB',
-    phone: '081244443333',
-    category: 'TOKO',
-    area: 'CRB',
-    createdAt: '30/07/2026'
+    createdAt: '31/07/2026'
   }
 ];
 
-// SEED REQUESTS DATABASE WITH DD/MM/YYYY FORMAT
-const SEED_REQUESTS = [
-  {
-    noSurat: 'PRMT/BDG/SNR/26/07/30/01',
-    tanggal: '30/07/2026',
-    area: 'BDG',
-    userId: 'USR-004',
-    toko: 'TOKO SINAR ABADI',
-    jenis: 'DEFAULT',
-    catatan: 'STOK TOKO - MOHON SEGERA',
-    items: [
-      {
-        type: 'AC-09V4-INV',
-        seri: 'AC09-BDG-88391',
-        dus: '',
-        barang: 'REMOTE AC ORIGINAL',
-        alasan: 'REMOTE PECAH SAAT DISPLAY TOKO',
-        qty: 1
-      }
-    ],
-    photos: [
-      'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"><rect width="100%" height="100%" fill="%231e293b"/><text x="50%" y="50%" fill="%233b82f6" font-size="16" text-anchor="middle">FOTO REMOTE AC PECAH</text></svg>'
-    ],
-    status: 'PENDING',
-    serviceApprove: false,
-    createdBy: 'RIAN (SALES EXECUTIVE BDG)',
-    createdAt: '30/07/2026 09:30',
-    log: []
-  },
-  {
-    noSurat: 'PRMT/BDG/SNR/26/07/29/02',
-    tanggal: '29/07/2026',
-    area: 'BDG',
-    userId: 'USR-005',
-    toko: 'TOKO SINAR ABADI',
-    jenis: 'DUS',
-    catatan: 'KARDUS RETUR BASAH',
-    items: [
-      {
-        type: 'TV-50X8000-LED',
-        seri: 'TV50-BDG-99412',
-        dus: 'BOX-BDG-55419',
-        barang: 'DUS KARDUS BARU TV',
-        alasan: 'DUS BASAH TERKENA HUJAN SAAT EKSPEDISI',
-        qty: 1
-      }
-    ],
-    photos: [],
-    status: 'APPROVE',
-    serviceApprove: true,
-    createdBy: 'TOKO SINAR ABADI',
-    createdAt: '29/07/2026 14:15',
-    log: [
-      {
-        action: 'APPROVE_SERVICE',
-        user: 'ISBIANTA (SERVICE SUPERVISOR BDG)',
-        notes: 'DISETUJUI SERVICE',
-        time: '29/07/2026 15:00'
-      },
-      {
-        action: 'APPROVE_DM',
-        user: 'BAPAK HENDRA (DM PUSAT)',
-        notes: 'DISETUJUI DM PUSAT. SILAKAN DIPROSES.',
-        time: '29/07/2026 16:30'
-      }
-    ]
-  }
-];
+const SEED_REQUESTS = [];
 
-// STATE VARIABLES
 let currentUser = null;
 let currentPhotos = [];
 let currentThemeIndex = 0;
 let filterStatusRiwayat = '';
-let dashboardFilterStatus = 'PENDING'; // DEFAULT DASHBOARD FILTER STATUS IS PENDING
+let dashboardFilterStatus = 'PENDING';
 let modeEdit = false;
 let editNoSurat = '';
 let confirmCallback = null;
@@ -411,42 +522,637 @@ let lastX = 0;
 let lastY = 0;
 let activeScanInput = null;
 let html5QrCodeScanner = null;
+let viewerPhotos = [];
+let viewerCurrentIndex = 0;
 
-// HELPER: GET FORMATTED DATE (DD/MM/YYYY)
 function getFormattedDateDDMMYYYY(dObj = new Date()) {
-  const day = String(dObj.getDate()).padStart(2, '0');
-  const month = String(dObj.getMonth() + 1).padStart(2, '0');
-  const year = dObj.getFullYear();
+  const d = (dObj instanceof Date && !isNaN(dObj.getTime())) ? dObj : new Date();
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
   return `${day}/${month}/${year}`;
 }
 
+function formatDateDDMMYYYYString(input) {
+  if (!input) return '-';
+  const str = String(input).trim();
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+    return str.split(' ')[0];
+  }
+  const match = str.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
+  if (match) {
+    return `${match[3]}/${match[2]}/${match[1]}`;
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  return str;
+}
+
+function getRequestsFromDB() {
+  return JSON.parse(appStorage.getItem(REQUESTS_DB_KEY) || '[]');
+}
+
+function saveRequestsToDB(requests) {
+  appStorage.setItem(REQUESTS_DB_KEY, JSON.stringify(requests));
+  if (typeof pushCentralCloudDB === 'function') {
+    pushCentralCloudDB();
+  }
+}
+
+function getUsersFromDB() {
+  return JSON.parse(appStorage.getItem(USERS_DB_KEY) || '[]');
+}
+
+function saveUsersToDB(users) {
+  appStorage.setItem(USERS_DB_KEY, JSON.stringify(users));
+  if (typeof pushCentralCloudDB === 'function') {
+    pushCentralCloudDB();
+  }
+}
+
 // APP INITIALIZATION
-document.addEventListener('DOMContentLoaded', () => {
-  initDatabase();
-  initFirebaseCloudDB();
-  startCentralCloudSyncEngine();
-  loadSavedTheme();
-  autoLogin();
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    closeAllPopups();
+
+    if (typeof loadSupabaseConfigFromJson === 'function') {
+      await loadSupabaseConfigFromJson();
+    }
+    
+    if (typeof initSupabaseDB === 'function') {
+      await initSupabaseDB();
+    }
+    
+    initDatabase(); 
+    if (typeof startCentralCloudSyncEngine === 'function') startCentralCloudSyncEngine();
+    if (typeof startSupabaseKeepalive === 'function') startSupabaseKeepalive();
+    loadSavedTheme();
+
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+      loginForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (typeof window.prosesLogin === 'function') window.prosesLogin();
+      });
+    }
+
+    const loginButton = document.getElementById('btnLogin');
+    if (loginButton) {
+      loginButton.addEventListener('click', () => {
+        if (typeof window.prosesLogin === 'function') window.prosesLogin();
+      });
+    }
+
+    const usernameInput = document.getElementById('username');
+    if (usernameInput) {
+      usernameInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          if (typeof window.prosesLogin === 'function') window.prosesLogin();
+        }
+      });
+    }
+
+    const passwordInput = document.getElementById('password');
+    if (passwordInput) {
+      passwordInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          if (typeof window.prosesLogin === 'function') window.prosesLogin();
+        }
+      });
+    }
+
+    autoLogin();
+
+    if (typeof currentUser !== 'undefined' && currentUser) {
+      if (typeof loadDashboard === 'function') loadDashboard();
+      if (typeof loadRiwayat === 'function') loadRiwayat();
+      if (document.getElementById('masterDbTableBody') && typeof loadMasterDbTable === 'function') loadMasterDbTable();
+      if (typeof updateNotifBellCounter === 'function') updateNotifBellCounter();
+      if (typeof startGlobalRealtimeLoop === 'function') startGlobalRealtimeLoop();
+    }
+
+    initMobileBackButtonEngine();
+    initPullToRefresh();
+    updateAdminReminderUI();
+  } catch (err) {
+    console.error("Boot error:", err);
+  } finally {
+    hideLoading();
+    closeAllPopups();
+    if (!document.querySelector('.page.active')) {
+      const dash = document.getElementById('dashboardPage');
+      if (dash) dash.classList.add('active');
+    }
+  }
+
+  setTimeout(() => {
+    if (typeof aturTampilanLonceng === 'function' && typeof getCurrentActivePageId === 'function') {
+      aturTampilanLonceng(getCurrentActivePageId());
+    }
+  }, 500);
 });
 
-/* ======================================================
-   CENTRAL ONLINE CLOUD DATABASE SYNC ENGINE (MULTI-DEVICE & WORLDWIDE)
-   ====================================================== */
-const PUBLIC_CLOUD_DB_URL = 'https://jsonblob.com/api/jsonBlob/019fb6e3-007e-7a60-874e-f092fafb9754';
-let cloudSyncInterval = null;
-let lastCloudSyncHash = '';
-let isPushingCloud = false;
+function initPullToRefresh() {
+  // PULL DOWN REFRESH DISABLED PER USER DIRECTIVE
+}
 
-/* ======================================================
-   ADMIN FEATURE TOGGLE FOR UPLOAD FOTO INPUT
-   ====================================================== */
+function getAdminReminderEnabled() {
+  const val = appStorage.getItem(ADMIN_REMINDER_KEY);
+  return val !== 'false';
+}
+
+function toggleAdminReminderFeature() {
+  const current = getAdminReminderEnabled();
+  const next = !current;
+  appStorage.setItem(ADMIN_REMINDER_KEY, next ? 'true' : 'false');
+  updateAdminReminderUI();
+  pushCentralCloudDB();
+  showNotif(next ? 'REMINDER PENDING SERVICE & DM SEKARANG AKTIF (ON)!' : 'REMINDER PENDING SERVICE & DM NONAKTIF (OFF)!', 'info');
+  if (next) {
+    checkAndTriggerPendingReminders();
+  }
+}
+window.toggleAdminReminderFeature = toggleAdminReminderFeature;
+
+const ADMIN_REMINDER_TIME_KEY = 'STORE_ADMIN_REMINDER_TIME_KEY_V7';
+
+function getAdminReminderTime() {
+  return appStorage.getItem(ADMIN_REMINDER_TIME_KEY) || '09:00';
+}
+
+function simpanAdminReminderTime() {
+  const input = document.getElementById('adminReminderTimeInput');
+  if (!input) return;
+  const val = input.value.trim();
+  if (val) {
+    appStorage.setItem(ADMIN_REMINDER_TIME_KEY, val);
+    pushCentralCloudDB();
+    showNotif(`JADWAL JAM WA REMINDER DISIMPAN: ${val}!`, 'info');
+  }
+}
+window.simpanAdminReminderTime = simpanAdminReminderTime;
+
+function loadAdminReminderTimeInput() {
+  const input = document.getElementById('adminReminderTimeInput');
+  if (input) {
+    input.value = getAdminReminderTime();
+  }
+}
+window.loadAdminReminderTimeInput = loadAdminReminderTimeInput;
+
+function updateAdminReminderUI() {
+  const statusText = document.getElementById('reminderFeatureStatusText');
+  const isEnabled = getAdminReminderEnabled();
+  if (statusText) {
+    statusText.textContent = isEnabled ? 'AKTIF (ON)' : 'NONAKTIF (OFF)';
+    statusText.style.color = isEnabled ? '#10b981' : '#ef4444';
+  }
+  loadAdminReminderTimeInput();
+  const container = document.getElementById('adminReminderControlContainer');
+  if (container) {
+    container.style.display = (currentUser && currentUser.category === 'ADMIN') ? 'flex' : 'none';
+  }
+}
+
+function checkAndTriggerPendingReminders() {
+  if (!getAdminReminderEnabled()) return;
+  const requests = getRequestsFromDB();
+  if (!requests.length) return;
+
+  const notifs = getSystemNotifications();
+  const pendingServiceReqs = requests.filter(r => r.status === 'PENDING' && !r.serviceApprove);
+  const pendingDMReqs = requests.filter(r => r.status === 'PENDING' && r.serviceApprove);
+
+  let hasNewReminder = false;
+  if (pendingServiceReqs.length > 0) {
+    pendingServiceReqs.forEach(r => {
+      const message = `REMINDER PENDING: PERMINTAAN #${r.noSurat} DARI TOKO ${r.toko} BELUM DI-APPROVE SERVICE!`;
+      const duplicate = notifs.some(n => n.noSurat === r.noSurat && String(n.message).includes('REMINDER PENDING') && String(n.message).includes('SERVICE'));
+      if (!duplicate) {
+        tambahNotifikasiSistem(['SERVICE'], r.area, message, r.noSurat);
+        hasNewReminder = true;
+      }
+    });
+  }
+
+  if (pendingDMReqs.length > 0) {
+    pendingDMReqs.forEach(r => {
+      const message = `REMINDER PENDING: PERMINTAAN #${r.noSurat} DARI TOKO ${r.toko} BELUM DI-APPROVE DM!`;
+      const duplicate = notifs.some(n => n.noSurat === r.noSurat && String(n.message).includes('REMINDER PENDING') && String(n.message).includes('DM'));
+      if (!duplicate) {
+        tambahNotifikasiSistem(['DM'], 'ALL', message, r.noSurat);
+        hasNewReminder = true;
+      }
+    });
+  }
+
+  if (hasNewReminder) {
+    updateNotifBellCounter();
+  }
+}
+
+let cloudSyncInterval = null;
+
+function onSupabaseDataChange(keyChanged) {
+  if (!currentUser) return;
+
+  const activePage = document.querySelector('.page.active');
+  const pageId = activePage ? activePage.id : '';
+
+  if (pageId === 'dashboardPage' && typeof loadDashboard === 'function') {
+    loadDashboard();
+  } else if (pageId === 'riwayatPage' && typeof loadRiwayat === 'function') {
+    loadRiwayat();
+  } else if (pageId === 'masterDbPage' && typeof loadMasterDbTable === 'function') {
+    loadMasterDbTable();
+  } else if (pageId === 'userManagementPage' && typeof loadUsersManagement === 'function') {
+    loadUsersManagement();
+  }
+
+  if (typeof updateNotifBellCounter === 'function') updateNotifBellCounter();
+  if (typeof cekUnreadNotif === 'function') cekUnreadNotif();
+
+  const popupBantuan = document.getElementById('popupBantuan');
+  if (popupBantuan && (popupBantuan.classList.contains('show') || popupBantuan.style.display === 'block')) {
+    if (typeof isAdminChat !== 'undefined' && isAdminChat) {
+      if (typeof currentRoom !== 'undefined' && currentRoom && typeof loadChatAdmin === 'function') {
+        loadChatAdmin(currentRoom);
+      } else if (typeof loadDaftarChatAdmin === 'function') {
+        loadDaftarChatAdmin();
+      }
+    } else {
+      if (typeof loadChatUser === 'function') {
+        loadChatUser();
+      }
+    }
+  }
+
+  const notifListPopup = document.getElementById('popupNotifList');
+  if (notifListPopup && notifListPopup.classList.contains('show')) {
+    if (typeof loadNotificationList === 'function') loadNotificationList();
+  }
+}
+
+function bersihkanCacheAplikasiWeb() {
+  if (typeof caches !== 'undefined' && caches.keys) {
+    caches.keys().then(names => {
+      names.forEach(name => caches.delete(name));
+    }).catch(() => {});
+  }
+}
+
+// DEFAULT FIREBASE ONLINE CONFIGURATION (PERMINTAAN TOKO - REAL LIVE DATABASE)
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDrn_Wx2FAaVGfoIjiWyRjdAKpUw0M50SU",
+  authDomain: "sementara-9985d.firebaseapp.com",
+  projectId: "sementara-9985d",
+  storageBucket: "sementara-9985d.firebasestorage.app",
+  messagingSenderId: "837199245948",
+  appId: "1:837199245948:web:92b4b2483380b393270ff9",
+  measurementId: "G-5NE511H1S5"
+};
+
+let firebaseApp = null;
+let dbFirestore = null;
+let dbRealtime = null;
+
+function getActiveFirebaseConfig() {
+  return DEFAULT_FIREBASE_CONFIG;
+}
+
+function initFirebaseDB() {
+  try {
+    if (typeof firebase !== 'undefined') {
+      const activeConfig = getActiveFirebaseConfig();
+      if (!firebase.apps.length) {
+        firebaseApp = firebase.initializeApp(activeConfig);
+      } else {
+        firebaseApp = firebase.app();
+      }
+
+      // FIRESTORE ENGINE (UTAMA)
+      if (typeof firebase.firestore === 'function') {
+        try {
+          dbFirestore = firebase.firestore();
+
+          dbFirestore.collection('requests').onSnapshot(snapshot => {
+            if (!snapshot.empty) {
+              const reqs = [];
+              snapshot.forEach(doc => reqs.push(doc.data()));
+              if (reqs.length > 0) {
+                appStorage.setItem(REQUESTS_DB_KEY, JSON.stringify(reqs));
+                if (typeof currentUser !== 'undefined' && currentUser) {
+                  if (typeof loadDashboard === 'function') loadDashboard();
+                  if (typeof loadRiwayat === 'function') loadRiwayat();
+                }
+              }
+            }
+
+            const dot = document.getElementById('firebaseOnlineDot');
+            if (dot) {
+              dot.style.background = '#10b981';
+              dot.style.boxShadow = '0 0 10px #10b981';
+              dot.title = `FIREBASE DATABASE ONLINE: TERHUBUNG (${activeConfig.projectId})`;
+            }
+          }, err => {
+            console.warn("[FIRESTORE NOTICE]:", err.message);
+          });
+
+          // REAL-TIME SNAPSHOT LISTENER UNTUK CHAT & SETTINGS PUSAT
+          dbFirestore.collection('app_settings').doc('config').onSnapshot(doc => {
+            if (doc.exists) {
+              const cfg = doc.data() || {};
+              if (cfg.notifications) appStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify(cfg.notifications));
+              if (cfg.chatMessages) appStorage.setItem(CHAT_DB_KEY, JSON.stringify(cfg.chatMessages));
+              if (cfg.chatRooms) appStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify(cfg.chatRooms));
+              if (cfg.theme) {
+                appStorage.setItem(THEME_KEY, cfg.theme);
+                if (typeof loadSavedTheme === 'function') loadSavedTheme();
+              }
+              if (cfg.fonteToken) appStorage.setItem(FONTE_TOKEN_KEY, cfg.fonteToken);
+              if (cfg.kodeUnitMap) {
+                const existingMap = JSON.parse(appStorage.getItem(KODE_UNIT_MAP_KEY) || '{}');
+                const mergedMap = { ...existingMap, ...cfg.kodeUnitMap };
+                appStorage.setItem(KODE_UNIT_MAP_KEY, JSON.stringify(mergedMap));
+              }
+              if (cfg.firebaseConfig) {
+                const curLocal = appStorage.getItem(FIREBASE_USER_CONFIG_KEY);
+                const newStr = typeof cfg.firebaseConfig === 'string' ? cfg.firebaseConfig : JSON.stringify(cfg.firebaseConfig);
+                if (curLocal !== newStr && newStr !== 'null') {
+                  appStorage.setItem(FIREBASE_USER_CONFIG_KEY, newStr);
+                  if (typeof loadFirebaseConfigInput === 'function') loadFirebaseConfigInput();
+                  initFirebaseDB();
+                }
+              }
+
+              if (typeof refreshActiveChatUI === 'function') {
+                refreshActiveChatUI();
+              }
+            }
+          }, err => {
+            console.warn("[FIRESTORE CONFIG SNAPSHOT NOTICE]:", err.message);
+          });
+
+          // JIKA FIRESTORE BERHASIL DIINISIALISASI, SET BULAT HIJAU
+          const dot = document.getElementById('firebaseOnlineDot');
+          if (dot) {
+            dot.style.background = '#10b981';
+            dot.style.boxShadow = '0 0 10px #10b981';
+            dot.title = `FIREBASE DATABASE ONLINE: TERHUBUNG (${activeConfig.projectId})`;
+          }
+        } catch (e) {
+          console.warn("[FIRESTORE INIT NOTICE]:", e.message);
+        }
+      }
+
+      // REALTIME DATABASE (JIKA ADANYA CONFIG DATABASEURL)
+      if (activeConfig.databaseURL && typeof firebase.database === 'function') {
+        try {
+          dbRealtime = firebase.database();
+        } catch (e) {
+          dbRealtime = null;
+        }
+      }
+
+      const statusBadge = document.getElementById('firebaseStatusBadge');
+      if (statusBadge) {
+        statusBadge.textContent = `STATUS: TERHUBUNG KE FIREBASE ONLINE (${activeConfig.projectId})`;
+        statusBadge.style.color = '#10b981';
+      }
+
+      console.log(`[FIREBASE ONLINE ENGINE]: Connected to ${activeConfig.projectId}`);
+    }
+  } catch (err) {
+    const dot = document.getElementById('firebaseOnlineDot');
+    if (dot) {
+      dot.style.background = '#ef4444';
+      dot.style.boxShadow = '0 0 10px #ef4444';
+      dot.title = 'FIREBASE DATABASE ONLINE: TERPUTUS / DISKONEK';
+    }
+    console.warn("[FIREBASE ENGINE NOTICE]:", err.message);
+  }
+}
+
+function loadFirebaseConfigInput() {
+  const input = document.getElementById('firebaseConfigJsonInput');
+  if (!input) return;
+  const saved = appStorage.getItem(FIREBASE_USER_CONFIG_KEY);
+  if (saved) {
+    input.value = saved;
+  } else {
+    input.value = JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2);
+  }
+}
+
+function simpanFirebaseConfigUser() {
+  const input = document.getElementById('firebaseConfigJsonInput');
+  const val = input ? input.value.trim() : '';
+
+  if (!val) {
+    appStorage.removeItem(FIREBASE_USER_CONFIG_KEY);
+    showNotif('KONFIGURASI FIREBASE DI-RESET KE DEFAULT!', 'info');
+    if (typeof pushCentralCloudDB === 'function') pushCentralCloudDB();
+    initFirebaseDB();
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(val);
+    if (!parsed.projectId) {
+      showNotif('INVALID CONFIG! PROJECT ID TIDAK DITEMUKAN.', 'warning');
+      return;
+    }
+    appStorage.setItem(FIREBASE_USER_CONFIG_KEY, JSON.stringify(parsed));
+    showNotif('BERHASIL MENYIMPAN & MENSINKRONKAN KE SEMUA PERANGKAT!', 'success');
+    if (typeof pushCentralCloudDB === 'function') pushCentralCloudDB();
+    initFirebaseDB();
+  } catch (e) {
+    showNotif('FORMAT JSON KONFIGURASI FIREBASE TIDAK VALID!', 'error');
+  }
+}
+
+function startCentralCloudSyncEngine() {
+  initFirebaseDB();
+  if (typeof setOnDataChangeCallback === 'function') {
+    setOnDataChangeCallback(onSupabaseDataChange);
+  }
+  if (cloudSyncInterval) {
+    clearInterval(cloudSyncInterval);
+    cloudSyncInterval = null;
+  }
+}
+
+async function syncAllDataToCache() {
+  try {
+    if (typeof pushToSupabaseNow === 'function') {
+      await pushToSupabaseNow();
+    }
+
+    if (dbFirestore) {
+      try {
+        // 1. SYNC REQUESTS DATA
+        const reqSnapshot = await dbFirestore.collection('requests').get();
+        if (!reqSnapshot.empty) {
+          const reqs = [];
+          reqSnapshot.forEach(doc => reqs.push(doc.data()));
+          if (reqs.length > 0) {
+            appStorage.setItem(REQUESTS_DB_KEY, JSON.stringify(reqs));
+          }
+        }
+
+        // 2. SYNC USERS MASTER DATA
+        const userSnapshot = await dbFirestore.collection('users').get();
+        if (!userSnapshot.empty) {
+          const usrs = [];
+          userSnapshot.forEach(doc => usrs.push(doc.data()));
+          if (usrs.length > 0) {
+            appStorage.setItem(USERS_DB_KEY, JSON.stringify(usrs));
+          }
+        }
+
+        // 3. SYNC APP SETTINGS, NOTIFICATIONS, CHATS, ROOMS, THEMES, TOKENS
+        const configDoc = await dbFirestore.collection('app_settings').doc('config').get();
+        if (configDoc.exists) {
+          const cfg = configDoc.data() || {};
+          if (cfg.notifications) appStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify(cfg.notifications));
+          if (cfg.chatMessages) appStorage.setItem(CHAT_DB_KEY, JSON.stringify(cfg.chatMessages));
+          if (cfg.chatRooms) appStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify(cfg.chatRooms));
+          if (cfg.theme) {
+            appStorage.setItem(THEME_KEY, cfg.theme);
+            if (typeof loadSavedTheme === 'function') loadSavedTheme();
+          }
+          if (cfg.fonteToken) appStorage.setItem(FONTE_TOKEN_KEY, cfg.fonteToken);
+          if (cfg.adminReminder !== undefined) appStorage.setItem(ADMIN_REMINDER_KEY, String(cfg.adminReminder));
+          if (cfg.adminReminderTime) appStorage.setItem(ADMIN_REMINDER_TIME_KEY, cfg.adminReminderTime);
+          if (cfg.featurePhotos !== undefined) appStorage.setItem(FEATURE_PHOTOS_KEY, String(cfg.featurePhotos));
+          if (cfg.kodeUnitMap) {
+            const existingMap = JSON.parse(appStorage.getItem(KODE_UNIT_MAP_KEY) || '{}');
+            const mergedMap = { ...existingMap, ...cfg.kodeUnitMap };
+            appStorage.setItem(KODE_UNIT_MAP_KEY, JSON.stringify(mergedMap));
+          }
+        }
+      } catch (err) {
+        console.warn("[FIREBASE SYNC NOTICE]:", err.message);
+      }
+    }
+  } catch (err) {
+    console.error("Sync error:", err);
+  }
+}
+
+async function pushCentralCloudDB() {
+  try {
+    if (dbFirestore) {
+      try {
+        // 1. PUSH REQUESTS
+        const requests = getRequestsFromDB();
+        const reqBatch = dbFirestore.batch();
+        requests.forEach(r => {
+          if (r && r.noSurat) {
+            const docId = r.noSurat.replace(/[\/\.]/g, '_');
+            const docRef = dbFirestore.collection('requests').doc(docId);
+            reqBatch.set(docRef, r, { merge: true });
+          }
+        });
+        await reqBatch.commit();
+
+        // 2. PUSH USERS MASTER DATA
+        const users = getUsersFromDB();
+        const userBatch = dbFirestore.batch();
+        users.forEach(u => {
+          if (u && u.username) {
+            const docId = String(u.username).toUpperCase();
+            const docRef = dbFirestore.collection('users').doc(docId);
+            userBatch.set(docRef, u, { merge: true });
+          }
+        });
+        await userBatch.commit();
+
+        // 3. PUSH APP CONFIG, NOTIFICATIONS, CHAT MESSAGES, CHAT ROOMS, THEME, FONTE TOKEN, KODE UNIT MAP
+        const notifs = getSystemNotifications();
+        const chatMsgs = JSON.parse(appStorage.getItem(CHAT_DB_KEY) || '[]');
+        const chatRooms = JSON.parse(appStorage.getItem(CHAT_ROOM_DB_KEY) || '[]');
+        const theme = appStorage.getItem(THEME_KEY) || 'dark-mode';
+        const fonteToken = getFonteToken();
+        const adminReminder = getAdminReminderEnabled();
+        const adminReminderTime = getAdminReminderTime();
+        const featurePhotos = getFeaturePhotosEnabled();
+        const kodeUnitMap = getKodeUnitMap();
+
+        const firebaseCfgStr = appStorage.getItem(FIREBASE_USER_CONFIG_KEY);
+        let parsedFbCfg = null;
+        try { if (firebaseCfgStr) parsedFbCfg = JSON.parse(firebaseCfgStr); } catch(e) {}
+
+        await dbFirestore.collection('app_settings').doc('config').set({
+          notifications: notifs,
+          chatMessages: chatMsgs,
+          chatRooms: chatRooms,
+          theme: theme,
+          fonteToken: fonteToken,
+          adminReminder: adminReminder,
+          adminReminderTime: adminReminderTime,
+          featurePhotos: featurePhotos,
+          kodeUnitMap: kodeUnitMap,
+          firebaseConfig: parsedFbCfg,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+      } catch (err) {
+        console.warn("[FIREBASE PUSH NOTICE]:", err.message);
+      }
+    }
+
+    if (dbRealtime) {
+      try {
+        const requests = getRequestsFromDB();
+        const users = getUsersFromDB();
+        const notifs = getSystemNotifications();
+        const chatMsgs = JSON.parse(appStorage.getItem(CHAT_MESSAGES_KEY) || '[]');
+
+        dbRealtime.ref('requests').set(requests);
+        dbRealtime.ref('users').set(users);
+        dbRealtime.ref('notifications').set(notifs);
+        dbRealtime.ref('chat_messages').set(chatMsgs);
+        dbRealtime.ref('settings').set({
+          theme: appStorage.getItem(THEME_KEY) || 'dark-mode',
+          fonteToken: getFonteToken(),
+          adminReminder: getAdminReminderEnabled(),
+          adminReminderTime: getAdminReminderTime(),
+          featurePhotos: getFeaturePhotosEnabled()
+        });
+      } catch (err) {
+        console.warn("[FIREBASE REALTIME PUSH NOTICE]:", err.message);
+      }
+    }
+
+    await syncAllDataToCache();
+  } finally {
+    setTimeout(() => {
+      hideLoading();
+    }, 300);
+  }
+}
+
+function updateCloudStatusUI(isOnline) {
+  if (typeof updateSupabaseStatusUI === 'function') {
+    updateSupabaseStatusUI(isOnline);
+  }
+}
+
 function getFeaturePhotosEnabled() {
-  const val = localStorage.getItem(FEATURE_PHOTOS_KEY);
+  const val = appStorage.getItem(FEATURE_PHOTOS_KEY);
   return val !== 'false';
 }
 
 function setFeaturePhotosEnabled(enabled) {
-  localStorage.setItem(FEATURE_PHOTOS_KEY, enabled ? 'true' : 'false');
+  appStorage.setItem(FEATURE_PHOTOS_KEY, enabled ? 'true' : 'false');
   updatePhotoSectionVisibility();
   pushCentralCloudDB();
 }
@@ -471,340 +1177,204 @@ function updatePhotoSectionVisibility() {
     statusText.textContent = isEnabled ? 'AKTIF (ON)' : 'NONAKTIF (OFF)';
     statusText.style.color = isEnabled ? '#10b981' : '#ef4444';
   }
-}
 
-function startCentralCloudSyncEngine() {
-  pullCentralCloudDB();
-  if (!cloudSyncInterval) {
-    cloudSyncInterval = setInterval(pullCentralCloudDB, 800);
+  const adminCard = document.getElementById('adminPhotoControlContainer');
+  if (adminCard) {
+    adminCard.style.display = (currentUser && (currentUser.category === 'ADMIN' || currentUser.username === 'ADMIN')) ? 'flex' : 'none';
+  }
+
+  if (typeof loadRiwayat === 'function' && document.getElementById('riwayatPage')?.classList.contains('active')) {
+    loadRiwayat();
   }
 }
 
-async function pullCentralCloudDB() {
-  if (isPushingCloud) return;
+function normalizeUserList(users) {
+  if (!Array.isArray(users)) return [];
 
-  try {
-    const res = await fetch(PUBLIC_CLOUD_DB_URL, {
-      headers: { 'Accept': 'application/json' },
-      cache: 'no-cache'
+  const seen = new Set();
+  const cleaned = [];
+
+  users.forEach(user => {
+    if (!user || !user.username) return;
+    const username = String(user.username).trim();
+    if (!username) return;
+    const key = username.toUpperCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    cleaned.push({
+      ...user,
+      username,
+      fullName: String(user.fullName || '').trim(),
+      password: String(user.password || '').trim(),
+      storeCode: String(user.storeCode || '').trim().toUpperCase(),
+      phone: String(user.phone || '').trim(),
+      category: String(user.category || 'TOKO').trim().toUpperCase(),
+      area: String(user.area || 'BDG').trim().toUpperCase()
     });
+  });
 
-    if (!res.ok) {
-      updateCloudStatusUI(false);
-      return;
-    }
-
-    const data = await res.json();
-    if (!data || isPushingCloud) return;
-
-    const dataHash = JSON.stringify(data);
-    if (dataHash === lastCloudSyncHash) return;
-    lastCloudSyncHash = dataHash;
-
-    let needUIRefresh = false;
-
-    // Merge deleted requests & users blacklists from Cloud
-    if (Array.isArray(data.deletedRequests)) {
-      const delReqs = JSON.parse(localStorage.getItem(DELETED_REQUESTS_KEY) || '[]');
-      const mergedDelReqs = Array.from(new Set([...delReqs, ...data.deletedRequests]));
-      localStorage.setItem(DELETED_REQUESTS_KEY, JSON.stringify(mergedDelReqs));
-    }
-
-    if (Array.isArray(data.deletedUsers)) {
-      const delUsers = JSON.parse(localStorage.getItem(DELETED_USERS_KEY) || '[]');
-      const mergedDelUsers = Array.from(new Set([...delUsers, ...data.deletedUsers]));
-      localStorage.setItem(DELETED_USERS_KEY, JSON.stringify(mergedDelUsers));
-    }
-
-    const currentDelReqs = JSON.parse(localStorage.getItem(DELETED_REQUESTS_KEY) || '[]');
-    const currentDelUsers = JSON.parse(localStorage.getItem(DELETED_USERS_KEY) || '[]');
-
-    if (Array.isArray(data.requests)) {
-      const filteredRequests = data.requests.filter(r => r && r.noSurat && !currentDelReqs.includes(r.noSurat));
-      localStorage.setItem(REQUESTS_DB_KEY, JSON.stringify(filteredRequests));
-      needUIRefresh = true;
-    }
-
-    if (Array.isArray(data.users) && data.users.length > 0) {
-      const filteredUsers = data.users.filter(u => u && u.id && !currentDelUsers.includes(u.id));
-      localStorage.setItem(USERS_DB_KEY, JSON.stringify(filteredUsers));
-      needUIRefresh = true;
-    }
-
-    if (data.ttd && typeof data.ttd === 'object') {
-      localStorage.setItem(TTD_DB_KEY, JSON.stringify(data.ttd));
-    }
-
-    if (Array.isArray(data.stores)) {
-      localStorage.setItem(STORES_DB_KEY, JSON.stringify(data.stores));
-    }
-
-    if (data.lookup && typeof data.lookup === 'object') {
-      localStorage.setItem(KODE_UNIT_MAP_KEY, JSON.stringify(data.lookup));
-    }
-
-    if (data.featurePhotos !== undefined) {
-      localStorage.setItem(FEATURE_PHOTOS_KEY, String(data.featurePhotos));
-      updatePhotoSectionVisibility();
-    }
-
-    if (Array.isArray(data.chat)) {
-      localStorage.setItem(CHAT_DB_KEY, JSON.stringify(data.chat));
-    }
-
-    if (Array.isArray(data.chatRooms)) {
-      localStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify(data.chatRooms));
-    }
-
-    if (Array.isArray(data.notifications)) {
-      localStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify(data.notifications));
-    }
-
-    if (needUIRefresh && currentUser) {
-      loadDashboard();
-      loadRiwayat();
-      if (document.getElementById('userTableBody')) {
-        loadUsersManagement();
-      }
-      if (document.getElementById('masterDbTableBody')) {
-        loadMasterDbTable();
-      }
-    }
-
-    updateCloudStatusUI(true);
-  } catch (err) {
-    updateCloudStatusUI(false);
-  }
+  return cleaned;
 }
 
-async function pushCentralCloudDB() {
-  isPushingCloud = true;
-  const payload = {
-    requests: getRequestsFromDB(),
-    users: getUsersFromDB(),
-    deletedRequests: JSON.parse(localStorage.getItem(DELETED_REQUESTS_KEY) || '[]'),
-    deletedUsers: JSON.parse(localStorage.getItem(DELETED_USERS_KEY) || '[]'),
-    ttd: JSON.parse(localStorage.getItem(TTD_DB_KEY) || '{}'),
-    stores: JSON.parse(localStorage.getItem(STORES_DB_KEY) || '[]'),
-    lookup: JSON.parse(localStorage.getItem(KODE_UNIT_MAP_KEY) || '{}'),
-    featurePhotos: getFeaturePhotosEnabled(),
-    chat: JSON.parse(localStorage.getItem(CHAT_DB_KEY) || '[]'),
-    chatRooms: JSON.parse(localStorage.getItem(CHAT_ROOM_DB_KEY) || '[]'),
-    notifications: JSON.parse(localStorage.getItem(NOTIFICATIONS_DB_KEY) || '[]')
-  };
+function clearAllAppCacheAndData(force = false) {
+  if (!force) {
+    console.warn('clearAllAppCacheAndData blocked: destructive reset disabled to protect active app data.');
+    return false;
+  }
 
   try {
-    const res = await fetch(PUBLIC_CLOUD_DB_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(payload)
+    if (window.appStorage) {
+      window.appStorage.clear();
+    }
+  } catch (err) {}
+
+  try {
+    const keysToRemove = Object.keys(localStorage || {});
+    keysToRemove.forEach(key => {
+      if (String(key).startsWith('STORE_')) {
+        localStorage.removeItem(key);
+      }
     });
-    if (res.ok) {
-      updateCloudStatusUI(true);
-    } else {
-      updateCloudStatusUI(false);
-    }
-  } catch (err) {
-    updateCloudStatusUI(false);
-  } finally {
-    isPushingCloud = false;
-  }
-}
+  } catch (err) {}
 
-function updateCloudStatusUI(isOnline) {
-  const badge = document.getElementById('cloudStatusBadge');
-  if (badge) {
-    if (isOnline) {
-      badge.style.background = 'rgba(16, 185, 129, 0.18)';
-      badge.style.color = '#10b981';
-      badge.style.borderColor = 'rgba(16, 185, 129, 0.35)';
-      badge.innerHTML = `<span class="material-symbols-rounded" style="font-size: 15px;">wifi</span> ONLINE`;
-    } else {
-      badge.style.background = 'rgba(239, 68, 68, 0.18)';
-      badge.style.color = '#ef4444';
-      badge.style.borderColor = 'rgba(239, 68, 68, 0.35)';
-      badge.innerHTML = `<span class="material-symbols-rounded" style="font-size: 15px;">wifi_off</span> OFFLINE`;
-    }
-  }
-}
-
-/* ======================================================
-   FIREBASE CLOUD FIRESTORE REALTIME DATABASE ENGINE
-   ====================================================== */
-let dbCloud = null;
-let isCloudDBActive = false;
-
-// Firebase Cloud Firestore Web Configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyB-DEFAULT_PLACEHOLDER_KEY",
-  authDomain: "permintaan-toko-app.firebaseapp.com",
-  projectId: "permintaan-toko-app",
-  storageBucket: "permintaan-toko-app.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abc123def456"
-};
-
-function initFirebaseCloudDB() {
-  if (typeof firebase !== 'undefined' && firebase.initializeApp) {
-    try {
-      if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-      }
-      dbCloud = firebase.firestore();
-      isCloudDBActive = true;
-      console.log('✅ FIREBASE CLOUD FIRESTORE TERHUBUNG BERHASIL!');
-      setupFirestoreRealtimeListeners();
-    } catch (err) {
-      console.warn('⚠️ FIREBASE FIRESTORE OFFLINE FALLBACK (LOCALSTORAGE MODE):', err.message);
-    }
-  }
-}
-
-function setupFirestoreRealtimeListeners() {
-  if (!dbCloud || !isCloudDBActive) return;
-
-  // Realtime Sync for Requests Collection
-  dbCloud.collection('requests').onSnapshot((snapshot) => {
-    if (snapshot && !snapshot.empty) {
-      const cloudRequests = [];
-      snapshot.forEach(doc => {
-        cloudRequests.push(doc.data());
-      });
-      if (cloudRequests.length > 0) {
-        localStorage.setItem(REQUESTS_DB_KEY, JSON.stringify(cloudRequests));
-        if (currentUser) {
-          loadDashboard();
-          loadRiwayat();
-        }
-      }
-    }
-  }, (err) => console.warn('Firestore Sync:', err.message));
-
-  // Realtime Sync for Users Collection
-  dbCloud.collection('users').onSnapshot((snapshot) => {
-    if (snapshot && !snapshot.empty) {
-      const cloudUsers = [];
-      snapshot.forEach(doc => {
-        cloudUsers.push(doc.data());
-      });
-      if (cloudUsers.length > 0) {
-        localStorage.setItem(USERS_DB_KEY, JSON.stringify(cloudUsers));
-        if (currentUser && document.getElementById('userTableBody')) {
-          loadUsersManagement();
-        }
-      }
-    }
-  }, (err) => console.warn('Firestore Users Sync:', err.message));
-}
-
-function syncRequestToCloud(reqObj) {
-  if (!dbCloud || !isCloudDBActive || !reqObj || !reqObj.noSurat) return;
   try {
-    dbCloud.collection('requests').doc(reqObj.noSurat).set(reqObj, { merge: true });
-  } catch (e) {
-    console.warn('Cloud Request Sync Error:', e);
+    if (typeof caches !== 'undefined' && caches.keys) {
+      caches.keys().then(names => names.forEach(n => caches.delete(n))).catch(() => {});
+    }
+  } catch (err) {}
+
+  const sessionKeys = [
+    SESSION_KEY, THEME_KEY, USERS_DB_KEY, REQUESTS_DB_KEY, CHAT_DB_KEY, CHAT_ROOM_DB_KEY,
+    TTD_DB_KEY, STORES_DB_KEY, DELETED_STORES_KEY, NOTIFICATIONS_DB_KEY, KODE_UNIT_MAP_KEY,
+    FEATURE_PHOTOS_KEY, DELETED_REQUESTS_KEY, DELETED_USERS_KEY, FONTE_TOKEN_KEY,
+    ADMIN_REMINDER_KEY, ADMIN_SECRET_KEY_STORAGE_KEY, ADMIN_SCRIPT_URL_KEY
+  ];
+
+  sessionKeys.forEach(key => {
+    try { localStorage.removeItem(key); } catch (err) {}
+    try { window.appStorage?.removeItem?.(key); } catch (err) {}
+  });
+
+  if (window.appStorage) {
+    window.appStorage.setItem(USERS_DB_KEY, JSON.stringify([...SEED_USERS]));
+    window.appStorage.setItem(REQUESTS_DB_KEY, JSON.stringify([]));
+    window.appStorage.setItem(CHAT_DB_KEY, JSON.stringify([]));
+    window.appStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify([]));
+    window.appStorage.setItem(TTD_DB_KEY, JSON.stringify({}));
+    window.appStorage.setItem(KODE_UNIT_MAP_KEY, JSON.stringify({}));
+    window.appStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify([]));
+    window.appStorage.setItem(DELETED_USERS_KEY, JSON.stringify([]));
   }
+
+  return true;
 }
 
-function syncUserToCloud(userObj) {
-  if (!dbCloud || !isCloudDBActive || !userObj || !userObj.id) return;
-  try {
-    dbCloud.collection('users').doc(userObj.id).set(userObj, { merge: true });
-  } catch (e) {
-    console.warn('Cloud User Sync Error:', e);
-  }
+function getAdminScriptUrl() {
+  return (appStorage.getItem(ADMIN_SCRIPT_URL_KEY) || '').trim();
 }
 
-// DATABASE ENGINE
+function saveAdminScriptUrl(url) {
+  const clean = (url || '').trim();
+  if (clean) appStorage.setItem(ADMIN_SCRIPT_URL_KEY, clean);
+  else appStorage.removeItem(ADMIN_SCRIPT_URL_KEY);
+}
+
+function loadAdminScriptUrlInput() {
+  const input = document.getElementById('adminScriptUrlInput');
+  if (input) input.value = getAdminScriptUrl();
+}
+
+function simpanAdminScriptUrl() {
+  const input = document.getElementById('adminScriptUrlInput');
+  const value = input ? input.value.trim() : '';
+  saveAdminScriptUrl(value);
+  showNotif(value ? 'URL GOOGLE APPS SCRIPT BERHASIL DISIMPAN!' : 'URL GOOGLE APPS SCRIPT DIHAPUS!', 'info');
+}
+
 function initDatabase() {
-  let storedUsers = [];
-  try {
-    storedUsers = JSON.parse(localStorage.getItem(USERS_DB_KEY) || '[]');
-  } catch (e) {
-    storedUsers = [];
+  const currentTheme = localStorage.getItem(THEME_KEY);
+  if (currentTheme) {
+    document.body.className = currentTheme;
   }
-
-  if (!Array.isArray(storedUsers) || !storedUsers.length) {
-    storedUsers = [...SEED_USERS];
-    localStorage.setItem(USERS_DB_KEY, JSON.stringify(storedUsers));
-  }
-  
-  const existingReq = localStorage.getItem(REQUESTS_DB_KEY);
-  if (!existingReq || existingReq.includes('font-family')) {
-    localStorage.setItem(REQUESTS_DB_KEY, JSON.stringify(SEED_REQUESTS));
-  }
-
-  if (!localStorage.getItem(CHAT_DB_KEY)) {
-    localStorage.setItem(CHAT_DB_KEY, JSON.stringify([]));
-  }
-  if (!localStorage.getItem(CHAT_ROOM_DB_KEY)) {
-    localStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify([]));
-  }
-  if (!localStorage.getItem(TTD_DB_KEY)) {
-    localStorage.setItem(TTD_DB_KEY, JSON.stringify({}));
+  if (typeof updatePhotoSectionVisibility === 'function') {
+    updatePhotoSectionVisibility();
   }
 }
 
 function getUsersFromDB() {
   let users = [];
   try {
-    users = JSON.parse(localStorage.getItem(USERS_DB_KEY) || '[]');
+    users = JSON.parse(appStorage.getItem(USERS_DB_KEY) || '[]');
   } catch (e) {
     users = [];
   }
-  if (!Array.isArray(users) || !users.length) {
-    users = [...SEED_USERS];
-    localStorage.setItem(USERS_DB_KEY, JSON.stringify(users));
-  } else {
-    // Ensure USR-ADMIN exists and has password xxx
-    const adminUser = users.find(u => u && u.username && u.username.toUpperCase() === 'ADMIN');
-    if (!adminUser) {
-      users.unshift({
-        id: 'USR-ADMIN',
-        username: 'ADMIN',
-        password: 'xxx',
-        fullName: 'SUPER ADMINISTRATOR PUSAT',
-        phone: '081299990000',
-        category: 'ADMIN',
-        area: 'ALL',
-        createdAt: '30/07/2026'
-      });
-      localStorage.setItem(USERS_DB_KEY, JSON.stringify(users));
-    } else {
-      adminUser.password = 'xxx';
+
+  users = normalizeUserList(users);
+
+  const defaultUsernamesToRemove = ['SERVICE_TSM', 'DM_TSM', 'TOKO_1', 'SALES_1'];
+  let updated = false;
+
+  users = users.filter(u => {
+    if (u && u.username && defaultUsernamesToRemove.includes(String(u.username).toUpperCase())) {
+      updated = true;
+      return false;
     }
+    return true;
+  });
+
+  const adminIndex = users.findIndex(u => u && u.username && String(u.username).toUpperCase() === 'ADMIN');
+  if (adminIndex !== -1) {
+    if (users[adminIndex].password !== '0') {
+      users[adminIndex].password = '0';
+      updated = true;
+    }
+  } else {
+    users.push({ ...SEED_USERS[0] });
+    updated = true;
   }
+
+  if (updated || !users.length) {
+    users = normalizeUserList(users.length ? users : [...SEED_USERS]);
+    appStorage.setItem(USERS_DB_KEY, JSON.stringify(users));
+  }
+
   return users;
 }
 
 function saveUsersToDB(users) {
-  localStorage.setItem(USERS_DB_KEY, JSON.stringify(users));
+  const normalizedUsers = normalizeUserList(Array.isArray(users) ? users : []);
+  appStorage.setItem(USERS_DB_KEY, JSON.stringify(normalizedUsers));
   pushCentralCloudDB();
-  if (dbCloud && isCloudDBActive && Array.isArray(users)) {
-    users.forEach(u => syncUserToCloud(u));
+  if (currentUser) {
+    loadDashboard();
+    loadRiwayat();
+    if (document.getElementById('userTableBody')) loadUsersManagement();
   }
 }
 
 function getRequestsFromDB() {
-  return JSON.parse(localStorage.getItem(REQUESTS_DB_KEY) || '[]');
+  return JSON.parse(appStorage.getItem(REQUESTS_DB_KEY) || '[]');
 }
 
 function saveRequestsToDB(requests) {
-  localStorage.setItem(REQUESTS_DB_KEY, JSON.stringify(requests));
+  appStorage.setItem(REQUESTS_DB_KEY, JSON.stringify(requests));
   pushCentralCloudDB();
-  if (dbCloud && isCloudDBActive && Array.isArray(requests)) {
-    requests.forEach(r => syncRequestToCloud(r));
+  if (currentUser) {
+    loadDashboard();
+    loadRiwayat();
   }
 }
 
-// AUTOMATED WHATSAPP NOTIFICATION ENGINE (FONTE / FONNTE API)
 function getFonteToken() {
-  return localStorage.getItem(FONTE_TOKEN_KEY) || '';
+  return appStorage.getItem(FONTE_TOKEN_KEY) || '';
 }
 
 function simpanFonteToken() {
-  const token = document.getElementById('fonteTokenInput').value.trim();
-  localStorage.setItem(FONTE_TOKEN_KEY, token);
+  const input = document.getElementById('fonteTokenInput');
+  const token = input ? input.value.trim() : '';
+  appStorage.setItem(FONTE_TOKEN_KEY, token);
+  pushCentralCloudDB();
   showNotif(token ? 'TOKEN WA FONTE BERHASIL DISIMPAN!' : 'TOKEN WA DIKOSONGKAN!', 'info');
 }
 
@@ -816,17 +1386,26 @@ function loadFonteToken() {
 }
 
 function kirimNotifikasiWA(targetPhone, message) {
+  if (!targetPhone || targetPhone === '-') return false;
+
   const token = getFonteToken();
   if (!token) {
     console.log(`[WA NOTIF SIMULATED - TOKEN BELUM DIISI] To: ${targetPhone} Msg: ${message}`);
-    return;
+    return false;
   }
 
-  if (!targetPhone) return;
+  let cleanPhone = String(targetPhone).replace(/[^0-9]/g, '');
+  if (!cleanPhone) return false;
+  if (cleanPhone.startsWith('0')) {
+    cleanPhone = '62' + cleanPhone.slice(1);
+  } else if (!cleanPhone.startsWith('62')) {
+    cleanPhone = '62' + cleanPhone;
+  }
 
   const formData = new FormData();
-  formData.append('target', targetPhone);
+  formData.append('target', cleanPhone);
   formData.append('message', message);
+  formData.append('countryCode', '62');
 
   fetch('https://api.fonnte.com/send', {
     method: 'POST',
@@ -839,11 +1418,12 @@ function kirimNotifikasiWA(targetPhone, message) {
   }).catch(err => {
     console.error('[FONTE WA API ERROR]:', err);
   });
+
+  return true;
 }
 
-// 10 THEME ENGINE
 function loadSavedTheme() {
-  const saved = localStorage.getItem(THEME_KEY) || 'dark-mode';
+  const saved = (typeof localStorage !== 'undefined' ? localStorage.getItem('APP_SELECTED_THEME') : null) || appStorage.getItem(THEME_KEY) || 'dark-mode';
   document.body.className = saved;
   const idx = THEME_MODES.findIndex(t => t.id === saved);
   currentThemeIndex = idx !== -1 ? idx : 0;
@@ -854,25 +1434,136 @@ function toggleTheme() {
   currentThemeIndex = (currentThemeIndex + 1) % THEME_MODES.length;
   const t = THEME_MODES[currentThemeIndex];
   document.body.className = t.id;
-  localStorage.setItem(THEME_KEY, t.id);
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('APP_SELECTED_THEME', t.id);
+    }
+  } catch(e) {}
+  appStorage.setItem(THEME_KEY, t.id);
   updateThemeIcon();
+  pushCentralCloudDB();
 }
 
 function updateThemeIcon() {
-  const iconSpan = document.querySelector('.theme-toggle-btn span');
-  if (iconSpan) {
-    iconSpan.textContent = THEME_MODES[currentThemeIndex].icon;
-  }
+  const iconSpans = document.querySelectorAll('.theme-toggle-btn span, .popupThemeToggleBtn span, .theme-icon-btn span, .theme-toggle-inline span');
+  const currentIcon = THEME_MODES[currentThemeIndex] ? THEME_MODES[currentThemeIndex].icon : 'palette';
+  iconSpans.forEach(el => {
+    if (el) el.textContent = currentIcon;
+  });
 }
 
-// AUTHENTICATION & SESSION
+const STORE_REMEMBER_LOGIN_CREDS_KEY = 'STORE_REMEMBER_LOGIN_CREDS_V1';
+
 function autoLogin() {
-  const sess = localStorage.getItem(SESSION_KEY);
-  if (sess) {
-    currentUser = JSON.parse(sess);
+  if (!currentUser) {
+    try {
+      const savedSession = appStorage.getItem(SESSION_KEY);
+      if (savedSession) {
+        currentUser = JSON.parse(savedSession);
+      }
+    } catch (e) {
+      currentUser = null;
+    }
+  }
+
+  if (typeof currentUser !== 'undefined' && currentUser !== null) {
     bukaMainApp();
   } else {
     pindahHalaman('loginPage');
+    
+    // PRE-FILL USERNAME & PASSWORD HANYA JIKA INGAT SANDI DILAKUKAN DI PENYIMPANAN LOKAL
+    const savedCredsStr = appStorage.getItem(STORE_REMEMBER_LOGIN_CREDS_KEY);
+    if (savedCredsStr) {
+      try {
+        const creds = JSON.parse(savedCredsStr);
+        const uEl = document.getElementById('username');
+        const pEl = document.getElementById('password');
+        const remEl = document.getElementById('rememberMe');
+        if (uEl && creds.username) uEl.value = creds.username;
+        if (pEl && creds.password) pEl.value = creds.password;
+        if (remEl) remEl.checked = true;
+      } catch(e) {}
+    }
+  }
+}
+
+async function prosesLogin() {
+  const uEl = document.getElementById('username');
+  const pEl = document.getElementById('password');
+  if (!uEl || !pEl) return;
+
+  const u = uEl.value.trim().toUpperCase();
+  const p = pEl.value.trim();
+  const remember = document.getElementById('rememberMe')?.checked === true;
+
+  if (!u || !p) {
+    showNotif('USERNAME DAN PASSWORD WAJIB DIISI!', 'warning');
+    return;
+  }
+
+  showLoading('MEMPROSES LOGIN...');
+
+  try {
+    let users = getUsersFromDB();
+    let user = users.find(x => x && x.username && String(x.username).trim().toUpperCase() === u && String(x.password).trim() === p);
+
+    // JIKA USER TIDAK DITEMUKAN PADA CACHE LOKAL (MISAL SETELAH REFRESH HALAMAN SEBELUM CLOUD SYNC SELESAI),
+    // SINKRONKAN DENGAN DATABASE CLOUD TERLEBIH DAHULU SEBELUM MENAMPILKAN PASSWORD SALAH
+    if (!user && typeof syncAllDataToCache === 'function') {
+      try {
+        await syncAllDataToCache();
+        users = getUsersFromDB();
+        user = users.find(x => x && x.username && String(x.username).trim().toUpperCase() === u && String(x.password).trim() === p);
+      } catch (e) {}
+    }
+
+    if (user) {
+      currentUser = user;
+
+      if (remember) {
+        appStorage.setItem(SESSION_KEY, JSON.stringify(user));
+        appStorage.setItem(STORE_REMEMBER_LOGIN_CREDS_KEY, JSON.stringify({ username: u, password: p }));
+      } else {
+        appStorage.removeItem(SESSION_KEY);
+        appStorage.removeItem(STORE_REMEMBER_LOGIN_CREDS_KEY);
+      }
+
+      catatLogLogin(user.username, user.fullName, user.area, 'BERHASIL');
+      bukaMainApp();
+
+      if (typeof syncAllDataToCache === 'function') {
+        syncAllDataToCache().catch(() => {});
+      }
+
+      setTimeout(() => {
+        if (typeof aturTampilanLonceng === 'function') aturTampilanLonceng('dashboardPage');
+        if (typeof cekUnreadNotif === 'function') cekUnreadNotif();
+        if (typeof updateNotifBellCounter === 'function') updateNotifBellCounter();
+      }, 150);
+
+    } else {
+      catatLogLogin(u, '-', '-', 'GAGAL - PASSWORD SALAH');
+      showNotif('USERNAME ATAU PASSWORD SALAH!', 'error');
+    }
+  } catch (error) {
+    console.error("Login error:", error);
+    showNotif('GAGAL MEMPROSES LOGIN!', 'error');
+  } finally {
+    hideLoading();
+  }
+}
+window.prosesLogin = prosesLogin;
+
+async function catatLogLogin(username, nama, area, status) {
+  if (typeof supabaseClient !== 'undefined' && supabaseClient) {
+    try {
+      await supabaseClient.from('log_login').insert([{
+        username: username,
+        nama_lengkap: nama,
+        area: area,
+        status: status
+      }]);
+    } catch (e) {}
   }
 }
 
@@ -884,118 +1575,339 @@ function fillLogin(u, p) {
   prosesLogin();
 }
 
-function prosesLogin() {
-  const uEl = document.getElementById('username');
-  const pEl = document.getElementById('password');
-  if (!uEl || !pEl) return;
-
-  const u = uEl.value.trim().toUpperCase();
-  const p = pEl.value.trim();
-
-  if (!u || !p) {
-    showNotif('USERNAME DAN PASSWORD WAJIB DIISI!', 'warning');
-    return;
-  }
-
-  let users = getUsersFromDB();
-  if (!Array.isArray(users) || !users.length) {
-    users = [...SEED_USERS];
-  }
-  
-  // 1. Match from active user database
-  let user = users.find(x => x && x.username && x.username.toUpperCase() === u && String(x.password).trim() === p);
-
-  // 2. Fallback match from SEED_USERS
-  if (!user) {
-    user = SEED_USERS.find(x => x && x.username && x.username.toUpperCase() === u && String(x.password).trim() === p);
-    if (user) {
-      users.push(user);
-      saveUsersToDB(users);
-    }
-  }
-
-  // 3. Fallback for ADMIN with password xxx or 1
-  if (!user && u === 'ADMIN' && (p === 'xxx' || p === '1')) {
-    user = {
-      id: 'USR-ADMIN',
-      username: 'ADMIN',
-      password: 'xxx',
-      fullName: 'SUPER ADMINISTRATOR PUSAT',
-      phone: '081299990000',
-      category: 'ADMIN',
-      area: 'ALL',
-      createdAt: '30/07/2026'
-    };
-    users.unshift(user);
-    saveUsersToDB(users);
-  }
-
-  if (user) {
-    currentUser = user;
-    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-    showNotif(`SELAMAT DATANG, ${user.fullName}!`, 'info');
-    bukaMainApp();
-  } else {
-    showNotif('USERNAME ATAU PASSWORD SALAH!', 'error');
-  }
-}
-
 function logout() {
   showConfirm('YAKIN INGIN KELUAR DARI APLIKASI?', () => {
-    localStorage.removeItem(SESSION_KEY);
+    const rememberMeChecked = document.getElementById('rememberMe')?.checked;
+    const rememberedCreds = rememberMeChecked ? appStorage.getItem(STORE_REMEMBER_LOGIN_CREDS_KEY) : null;
+
     currentUser = null;
+
+    // HAPUS SEMUA CACHE & PENYIMPANAN LOKAL PADA SAAT LOGOUT
+    try {
+      if (typeof appStorage !== 'undefined' && appStorage.clear) {
+        appStorage.clear();
+      }
+      try { localStorage.clear(); } catch (e) {}
+      try { sessionStorage.clear(); } catch (e) {}
+
+      // MEMBERSIHKAN BROWSER CACHE STORAGE API
+      if ('caches' in window) {
+        caches.keys().then(keys => {
+          keys.forEach(k => caches.delete(k));
+        }).catch(e => console.warn(e));
+      }
+    } catch (err) {
+      console.warn('[CLEAR CACHE LOGOUT NOTICE]:', err);
+    }
+
+    // KEMBALIKAN INGAT SAYA JIKA USER CENTANG REMEMBER ME
+    if (rememberedCreds) {
+      try {
+        appStorage.setItem(STORE_REMEMBER_LOGIN_CREDS_KEY, rememberedCreds);
+        localStorage.setItem(STORE_REMEMBER_LOGIN_CREDS_KEY, rememberedCreds);
+      } catch (e) {}
+    } else {
+      const uEl = document.getElementById('username');
+      const pEl = document.getElementById('password');
+      if (uEl) uEl.value = '';
+      if (pEl) pEl.value = '';
+    }
+
     tutupAkun();
     tutupNotificationModal();
     const popupBantuan = document.getElementById('popupBantuan');
     if (popupBantuan) popupBantuan.classList.remove('show');
-    document.getElementById('bottomMenu').style.display = 'none';
-    document.getElementById('helpButton').style.display = 'none';
+    const bottomMenu = document.getElementById('bottomMenu');
+    if (bottomMenu) bottomMenu.style.display = 'none';
+    const helpBtn = document.getElementById('helpButton');
+    if (helpBtn) helpBtn.style.display = 'none';
+    
     pindahHalaman('loginPage');
-    updateNotifBellCounter();
+    if (typeof updateNotifBellCounter === 'function') updateNotifBellCounter();
+    
+    showNotif('BERHASIL LOGOUT & MEMBERSIHKAN CACHE!', 'success');
   });
 }
 
 function bukaMainApp() {
-  document.getElementById('loginPage').classList.remove('active');
-  document.getElementById('bottomMenu').style.display = 'flex';
-  initAllDraggableButtons();
+  const loginPage = document.getElementById('loginPage');
+  if (loginPage) loginPage.classList.remove('active');
+  
+  const bottomMenu = document.getElementById('bottomMenu');
+  if (bottomMenu) bottomMenu.style.display = 'flex';
+  
+  if (typeof initAllDraggableButtons === 'function') initAllDraggableButtons();
 
-  const isAdmin = (
-    currentUser.category === 'ADMIN' ||
-    (currentUser.username && currentUser.username.toUpperCase() === 'ADMIN')
-  );
-  const btnUserNav = document.getElementById('btnUserNav');
-  const btnMasterDbNav = document.getElementById('btnMasterDbNav');
+  updateAdminNavVisibility();
+  const isAdmin = checkIsAdminUser();
 
-  if (btnUserNav) btnUserNav.style.display = isAdmin ? 'flex' : 'none';
-  if (btnMasterDbNav) btnMasterDbNav.style.display = isAdmin ? 'flex' : 'none';
-
-  const btnHelp = document.getElementById('helpButton');
-  if (btnHelp) btnHelp.style.display = 'flex';
-
-  isAdminChat = isAdmin;
+  isAdminChat = typeof isServiceTSMUser === 'function' ? isServiceTSMUser() : (isAdmin || (currentUser && currentUser.category === 'SERVICE'));
 
   pindahHalaman('dashboardPage');
-  cekUnreadNotif();
-  updateNotifBellCounter();
+  if (typeof setupBottomMenuAutoHide === 'function') {
+    setupBottomMenuAutoHide();
+  }
+
+  setTimeout(() => {
+    if (typeof aturTampilanLonceng === 'function') {
+      aturTampilanLonceng('dashboardPage');
+    }
+  }, 100);
+
+  setTimeout(() => {
+    if (typeof aturTampilanLonceng === 'function') {
+      aturTampilanLonceng('dashboardPage');
+    }
+  }, 400);
+
+  if (typeof setOnDataChangeCallback === 'function' && typeof onSupabaseDataChange === 'function') {
+    setOnDataChangeCallback(onSupabaseDataChange);
+  }
+
+  if (typeof cekUnreadNotif === 'function') cekUnreadNotif();
+  if (typeof updateNotifBellCounter === 'function') updateNotifBellCounter();
+  if (typeof startGlobalRealtimeLoop === 'function') startGlobalRealtimeLoop();
+  if (typeof updateAdminReminderUI === 'function') updateAdminReminderUI();
+  if (typeof checkAndTriggerPendingReminders === 'function') checkAndTriggerPendingReminders();
 }
 
-// PAGE NAVIGATION WITH CONFIRMATION WHEN LEAVING EDIT MODE
 function showPage(pageId) {
   if (modeEdit && pageId !== 'inputPage') {
     showConfirm('KELUAR DARI MENU EDIT?', () => {
       bersihkanForm();
+      closeAllPopups();
       pindahHalaman(pageId);
+      aturTampilanLonceng(pageId);
     });
     return;
   }
+  
+  closeAllPopups();
   pindahHalaman(pageId);
+  aturTampilanLonceng(pageId);
 }
 
-function pindahHalaman(pageId) {
+function aturTampilanLonceng(pageId) {
+  const notifBtn = document.getElementById('notifBellBtn');
+  const helpBtn = document.getElementById('helpButton');
+  const dotEl = document.getElementById('firebaseOnlineDot');
+
+  const activePage = pageId || (typeof getCurrentActivePageId === 'function' ? getCurrentActivePageId() : 'dashboardPage');
+  const isLoggedIn = (typeof currentUser !== 'undefined' && currentUser !== null && !document.getElementById('loginPage')?.classList.contains('active'));
+  const isDashboard = isLoggedIn && (activePage === 'dashboardPage');
+
+  if (notifBtn) {
+    notifBtn.style.display = isDashboard ? 'flex' : 'none';
+  }
+  
+  if (helpBtn) {
+    helpBtn.style.display = isDashboard ? 'flex' : 'none';
+  }
+
+  if (dotEl) {
+    dotEl.style.display = isDashboard ? 'block' : 'none';
+  }
+
+  if (isLoggedIn) {
+    updateNotifBellCounter();
+    if (typeof cekUnreadNotif === 'function') cekUnreadNotif();
+  }
+}
+
+let mobileBackspaceCount = 0;
+let mobileBackspaceTimer = null;
+
+function pushPopupHistoryState() {
+  try {
+    history.pushState({ modalOpen: true, page: getCurrentActivePageId() }, '', location.href);
+  } catch (e) {}
+}
+
+function initMobileBackButtonEngine() {
+  try {
+    history.pushState({ page: 'dashboardPage' }, '', location.href);
+  } catch(e) {}
+
+  window.addEventListener('popstate', (e) => {
+    const popTTD = document.getElementById('popupTTD');
+    const isTtdOpen = popTTD && (popTTD.classList.contains('show') || popTTD.style.display === 'flex' || popTTD.style.display === 'block');
+
+    // JIKA POPUP TTD TERBUKA & DI-BACK DARI HP -> KEMBALI KE POPUP AKUN
+    if (isTtdOpen) {
+      if (typeof tutupTTD === 'function') tutupTTD();
+      if (typeof bukaAkun === 'function') bukaAkun();
+      try { history.pushState({ page: getCurrentActivePageId() }, '', location.href); } catch(err) {}
+      if (typeof aturTampilanLonceng === 'function') aturTampilanLonceng(getCurrentActivePageId());
+      return;
+    }
+
+    const openModals = [
+      document.getElementById('popupDetail'),
+      document.getElementById('popupNotifList'),
+      document.getElementById('popupBantuan'),
+      document.getElementById('popupAkun'),
+      document.getElementById('popupUserForm'),
+      document.getElementById('pdfModal'),
+      document.getElementById('rejectOverlay'),
+      document.getElementById('popupTambahToko'),
+      document.getElementById('popupPdfModelsModal'),
+      document.getElementById('confirmOverlay'),
+      document.getElementById('imageViewer'),
+      document.getElementById('scannerModal')
+    ];
+
+    let closedAnyModal = false;
+    openModals.forEach(m => {
+      if (m && (m.classList.contains('show') || m.style.display === 'flex' || m.style.display === 'block')) {
+        m.classList.remove('show');
+        m.style.display = 'none';
+        closedAnyModal = true;
+      }
+    });
+
+    if (closedAnyModal) {
+      if (typeof tutupScanner === 'function') tutupScanner();
+      if (typeof tutupImageViewer === 'function') tutupImageViewer();
+      
+      // JAGA AGAR TOMBOL ICON HEADER (LONCENG & BANTUAN) TETAP TERSEDIA DI DASHBOARD
+      const activePage = getCurrentActivePageId();
+      if (typeof aturTampilanLonceng === 'function') {
+        aturTampilanLonceng(activePage);
+      }
+
+      try { history.pushState({ page: activePage }, '', location.href); } catch(err) {}
+      return;
+    }
+
+    const currentActivePage = getCurrentActivePageId();
+
+    if (currentActivePage === 'inputPage' && typeof modeEdit !== 'undefined' && modeEdit) {
+      try { history.pushState({ page: 'inputPage' }, '', location.href); } catch(err) {}
+      
+      showConfirm('KELUAR DARI MENU EDIT?', () => {
+        if (typeof bersihkanForm === 'function') bersihkanForm();
+        closeAllPopups();
+        pindahHalaman('dashboardPage');
+      });
+      return;
+    }
+
+    if (currentActivePage !== 'dashboardPage' && currentActivePage !== 'loginPage') {
+      pindahHalaman('dashboardPage', false);
+      try { history.pushState({ page: 'dashboardPage' }, '', location.href); } catch(err) {}
+      if (typeof mobileBackspaceCount !== 'undefined') mobileBackspaceCount = 0;
+      return;
+    }
+
+    if (currentActivePage === 'dashboardPage') {
+      if (typeof mobileBackspaceCount === 'undefined') window.mobileBackspaceCount = 0;
+      mobileBackspaceCount++;
+
+      if (typeof mobileBackspaceTimer !== 'undefined' && mobileBackspaceTimer) clearTimeout(mobileBackspaceTimer);
+      window.mobileBackspaceTimer = setTimeout(() => {
+        mobileBackspaceCount = 0;
+      }, 3500);
+
+      if (mobileBackspaceCount < 5) {
+        try { history.pushState({ page: 'dashboardPage' }, '', location.href); } catch(err) {}
+      }
+    }
+  });
+}
+
+function getCurrentActivePageId() {
+  const activeEl = document.querySelector('.page.active');
+  return activeEl ? activeEl.id : 'dashboardPage';
+}
+
+function checkIsAdminUser() {
+  if (!currentUser) return false;
+  const category = (currentUser.category || currentUser.kategori || currentUser.role || '').toString().trim().toUpperCase();
+  const username = (currentUser.username || '').toString().trim().toUpperCase();
+  return category === 'ADMIN' || username === 'ADMIN';
+}
+
+function updateAdminNavVisibility() {
+  const isAdmin = checkIsAdminUser();
+
+  const btnUserNav = document.getElementById('btnUserNav');
+  const btnMasterDbNav = document.getElementById('btnMasterDbNav');
+
+  if (btnUserNav) {
+    if (isAdmin) {
+      btnUserNav.style.setProperty('display', 'flex', 'important');
+      btnUserNav.classList.remove('hidden-admin-btn');
+    } else {
+      btnUserNav.style.setProperty('display', 'none', 'important');
+      btnUserNav.classList.add('hidden-admin-btn');
+    }
+  }
+
+  if (btnMasterDbNav) {
+    if (isAdmin) {
+      btnMasterDbNav.style.setProperty('display', 'flex', 'important');
+      btnMasterDbNav.classList.remove('hidden-admin-btn');
+    } else {
+      btnMasterDbNav.style.setProperty('display', 'none', 'important');
+      btnMasterDbNav.classList.add('hidden-admin-btn');
+    }
+  }
+}
+
+function updateBottomMenuHighlight(pageId) {
+  updateAdminNavVisibility();
+  const bottomNav = document.getElementById('bottomMenu');
+  if (!bottomNav) return;
+
+  const btnMap = {
+    'dashboardPage': "showPage('dashboardPage')",
+    'inputPage': "showPage('inputPage')",
+    'riwayatPage': "bukaMenuRiwayat()",
+    'masterDbPage': "showPage('masterDbPage')",
+    'userManagementPage': "showPage('userManagementPage')"
+  };
+
+  const buttons = bottomNav.querySelectorAll('button');
+  buttons.forEach(btn => {
+    btn.classList.remove('active');
+    const onclickAttr = btn.getAttribute('onclick') || '';
+    const targetOnClick = btnMap[pageId];
+
+    if (targetOnClick && onclickAttr.includes(targetOnClick)) {
+      btn.classList.add('active');
+    }
+  });
+}
+
+let lastScrollTopPosition = 0;
+
+function setupBottomMenuAutoHide() {
+  const bottomMenu = document.getElementById('bottomMenu');
+  if (!bottomMenu) return;
+  bottomMenu.classList.remove('hide-bottom-menu');
+  bottomMenu.style.display = 'flex';
+}
+
+function pindahHalaman(pageId, pushHistory = true) {
+  updateAdminNavVisibility();
+
+  if ((pageId === 'masterDbPage' || pageId === 'userManagementPage') && !checkIsAdminUser()) {
+    pindahHalaman('dashboardPage', false);
+    return;
+  }
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const target = document.getElementById(pageId);
   if (target) target.classList.add('active');
+
+  updateBottomMenuHighlight(pageId);
+  setupBottomMenuAutoHide();
+
+  if (pushHistory && pageId !== 'loginPage') {
+    try {
+      history.pushState({ page: pageId }, '', location.href);
+    } catch(e) {}
+  }
 
   if (pageId === 'dashboardPage') {
     loadDashboard();
@@ -1007,16 +1919,16 @@ function pindahHalaman(pageId) {
     loadMasterDbTable();
   } else if (pageId === 'userManagementPage') {
     loadFonteToken();
+    loadFirebaseConfigInput();
     loadUsersManagement();
+    updateActivePdfModelBadge();
   }
 }
 
-/// DATA ACCESS BY ROLE & AREA (ADMIN & DM HAVE UNRESTRICTED ACCESS TO ALL AREAS)
 function getAccessibleRequests() {
   const requests = getRequestsFromDB();
   if (!currentUser) return [];
 
-  // ADMIN & DM HAVE FULL ACCESS TO ALL DATA ACROSS ALL AREAS
   if (
     currentUser.category === 'ADMIN' ||
     currentUser.category === 'DM' ||
@@ -1026,14 +1938,15 @@ function getAccessibleRequests() {
   }
 
   if (currentUser.category === 'TOKO') {
-    return requests.filter(r => r.userId === currentUser.id || r.toko.toUpperCase() === currentUser.fullName.toUpperCase() || r.area === currentUser.area);
+    return requests.filter(r => 
+      r.userId === currentUser.id || 
+      r.toko.toUpperCase() === currentUser.fullName.toUpperCase()
+    );
   }
 
-  // All SERVICE users (including TSM) and SALES are scoped strictly to their own area
   return requests.filter(r => r.area === currentUser.area);
 }
 
-// DASHBOARD: FILTER LIST BY METRIC CARDS (DEFAULT: PENDING)
 function filterDashboardRecent(status) {
   dashboardFilterStatus = status;
   loadDashboard();
@@ -1042,8 +1955,10 @@ function filterDashboardRecent(status) {
 function loadDashboard() {
   if (!currentUser) return;
 
-  document.getElementById('namaUser').textContent = currentUser.fullName;
-  document.getElementById('areaUser').textContent = `${currentUser.category} - ${AREA_MAP[currentUser.area] || currentUser.area}`;
+  const nameEl = document.getElementById('namaUser');
+  const areaEl = document.getElementById('areaUser');
+  if (nameEl) nameEl.textContent = currentUser.fullName;
+  if (areaEl) areaEl.textContent = `${currentUser.category} - ${AREA_MAP[currentUser.area] || currentUser.area}`;
 
   const data = getAccessibleRequests();
 
@@ -1053,10 +1968,15 @@ function loadDashboard() {
   const done = data.filter(r => r.status === 'DONE').length;
   const total = data.length || 1;
 
-  document.getElementById('pending').textContent = pending;
-  document.getElementById('approve').textContent = approve;
-  document.getElementById('reject').textContent = reject;
-  document.getElementById('done').textContent = done;
+  const elPending = document.getElementById('pending');
+  const elApprove = document.getElementById('approve');
+  const elReject = document.getElementById('reject');
+  const elDone = document.getElementById('done');
+
+  if (elPending) elPending.textContent = pending;
+  if (elApprove) elApprove.textContent = approve;
+  if (elReject) elReject.textContent = reject;
+  if (elDone) elDone.textContent = done;
 
   const barPending = document.getElementById('barPending');
   const barApprove = document.getElementById('barApprove');
@@ -1068,167 +1988,173 @@ function loadDashboard() {
   if (barReject) barReject.style.width = `${data.length ? Math.max(12, Math.round((reject / total) * 100)) : 15}%`;
   if (barDone) barDone.style.width = `${data.length ? Math.max(12, Math.round((done / total) * 100)) : 15}%`;
 
-  // DYNAMICALLY UPDATE DASHBOARD TITLE ACCORDING TO ACTIVE FILTER
   const titleEl = document.getElementById('dashboardRecentTitle');
   if (titleEl) {
-    titleEl.textContent = `PERMINTAAN [ ${dashboardFilterStatus} ] (KLIK BARIS UNTUK LIHAT DETAIL)`;
+    const iconName = dashboardFilterStatus === 'PENDING' ? 'hourglass_top' : (dashboardFilterStatus === 'APPROVE' ? 'verified' : (dashboardFilterStatus === 'REJECT' ? 'cancel' : 'task_alt'));
+    titleEl.innerHTML = `<span class="material-symbols-rounded" style="color: var(--primary); font-size: 22px;">${iconName}</span> PERMINTAAN ${dashboardFilterStatus}`;
   }
 
   const lastDataContainer = document.getElementById('lastData');
+  if (!lastDataContainer) return;
   lastDataContainer.innerHTML = '';
 
-  // FILTER LIST ON DASHBOARD BY SELECTED STATUS (DEFAULT: PENDING)
   const filteredData = data.filter(r => r.status === dashboardFilterStatus);
 
   if (filteredData.length === 0) {
-    lastDataContainer.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-muted);">TIDAK ADA DATA PERMINTAAN DENGAN STATUS ${dashboardFilterStatus}.</div>`;
+    lastDataContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:24px; color:var(--text-muted);">TIDAK ADA DATA PERMINTAAN DENGAN STATUS ${dashboardFilterStatus}.</td></tr>`;
     return;
   }
 
-    filteredData.forEach(r => {
-      const div = document.createElement('div');
-      div.className = 'lastItem';
-      div.style.cursor = 'pointer';
-      div.title = `KLIK BARIS INI UNTUK MEMBUKA PERMINTAAN #${r.noSurat}`;
-      div.onclick = () => bukaDetailDariDashboard(r.noSurat);
-      div.innerHTML = `
-        <div class="colTanggal">${r.tanggal}</div>
-        <div class="colNo">${r.noSurat}</div>
-        <div class="colToko">${r.toko} <small style="color:var(--primary);">(${r.area})</small></div>
-        <div class="colStatus">${getBadgeStatus(r)}</div>
-      `;
-      lastDataContainer.appendChild(div);
-    });
+  filteredData.forEach(r => {
+    const isWaitingDM = (r.status === 'PENDING' && r.serviceApprove);
+    const isWaitingService = (r.status === 'PENDING' && !r.serviceApprove);
+
+    let isOrangeRow = false;
+    let isBoldRow = false;
+    if (currentUser) {
+      const cat = (currentUser.category || '').toUpperCase();
+      const isAdm = cat === 'ADMIN' || (currentUser.username && currentUser.username.toUpperCase() === 'ADMIN');
+      if ((cat === 'DM' || isAdm) && isWaitingDM) {
+        isOrangeRow = true;
+        isBoldRow = true;
+      } else if ((cat === 'SERVICE' || isAdm) && isWaitingService) {
+        isOrangeRow = true;
+        isBoldRow = true;
+      }
+    }
+
+    const tr = document.createElement('tr');
+    if (shouldRowBlinkRed(r)) {
+      tr.className = 'blink-row-red';
+    }
+    tr.style.cursor = 'pointer';
+    tr.title = `KLIK BARIS INI UNTUK MEMBUKA PERMINTAAN #${r.noSurat}`;
+    tr.onclick = () => bukaDetailDariDashboard(r.noSurat);
+    tr.innerHTML = `
+      <td style="width: 18%; text-align: left; white-space: nowrap;">${formatDateDDMMYYYYString(r.tanggal)}</td>
+      <td style="width: 32%; text-align: left;">${r.noSurat}</td>
+      <td style="width: 30%; text-align: left;">${r.toko} <small>(${r.area})</small></td>
+      <td style="width: 20%; text-align: center;">${getBadgeStatus(r)}</td>
+    `;
+    lastDataContainer.appendChild(tr);
+  });
 }
 
-// KLIK BARIS DASHBOARD: TETAP DI DASHBOARD & BUKA POPUP DETAIL DENGAN TOMBOL LENGKAP
 function bukaDetailDariDashboard(noSurat) {
   lihatDetail(noSurat, true);
 }
 
-// DYNAMIC FORM MULTI-ROW ENGINE WITH CAMERA SCANNER TOOL IN EVERY SERIAL COLUMN
-function loadForm() {
-  document.getElementById('tanggal').value = getFormattedDateDDMMYYYY();
+function shouldRowBlinkRed(r) {
+  if (!r || !currentUser) return false;
+  const cat = String(currentUser.category || currentUser.kategori || currentUser.role || '').trim().toUpperCase();
+  const username = String(currentUser.username || '').trim().toUpperCase();
+  const isAdm = cat === 'ADMIN' || username === 'ADMIN';
 
-  const tokoSelect = document.getElementById('toko');
-  tokoSelect.innerHTML = '';
+  const isWaitingService = (r.status === 'PENDING' && !r.serviceApprove);
+  const isWaitingDM = (r.status === 'PENDING' && r.serviceApprove);
 
-  if (currentUser.category === 'TOKO') {
-    tokoSelect.innerHTML = `<option value="${currentUser.fullName}">${currentUser.fullName} (${currentUser.area})</option>`;
-  } else if (
-    currentUser.category === 'ADMIN' ||
-    currentUser.category === 'DM' ||
-    (currentUser.username && currentUser.username.toUpperCase() === 'ADMIN')
-  ) {
-    // ADMIN & DM can select all stores across all areas
-    const allStores = getStoresFromDB();
-    if (allStores.length > 0) {
-      allStores.forEach(s => {
-        tokoSelect.innerHTML += `<option value="${s.fullName}">${s.fullName} (${s.area})</option>`;
-      });
-    } else {
-      tokoSelect.innerHTML = `<option value="TOKO SINAR ABADI">TOKO SINAR ABADI (BDG)</option>`;
-    }
-  } else {
-    // Service & Sales dibatasi khusus area user sendiri
-    const allStores = getStoresFromDB();
-    const areaStores = allStores.filter(s => s.area === currentUser.area);
-    if (areaStores.length > 0) {
-      areaStores.forEach(s => {
-        tokoSelect.innerHTML += `<option value="${s.fullName}">${s.fullName} (${s.area})</option>`;
-      });
-    } else {
-      tokoSelect.innerHTML = `<option value="TOKO SINAR ABADI">TOKO SINAR ABADI (${currentUser.area})</option>`;
-    }
-  }
+  if ((cat === 'SERVICE' || isAdm) && isWaitingService) return true;
+  if ((cat === 'DM' || isAdm) && isWaitingDM) return true;
 
-  updatePhotoSectionVisibility();
-
-  if (!modeEdit) {
-    bersihkanForm();
-  }
+  return false;
 }
 
-// PLAIN TEXT STATUS WITH ROLE-BASED CONDITIONAL LABELS
 function getBadgeStatus(r) {
   if (typeof r === 'string') {
-    if (r === 'DONE') return '<span>SUDAH DIPENUHI</span>';
-    return `<span>${r}</span>`;
+    if (r === 'DONE') return 'SUDAH DIPENUHI';
+    if (r === 'APPROVE') return 'DISETUJUI';
+    if (r === 'REJECT') return 'DITOLAK';
+    if (r === 'PENDING') return 'PENDING';
+    return r;
   }
 
-  if (!r) return '<span>-</span>';
+  if (!r) return '-';
 
-  const role = currentUser ? currentUser.category : '';
   const st = r.status;
   const serviceAppv = r.serviceApprove;
 
-  if (st === 'DONE') {
-    return '<span>SUDAH DIPENUHI</span>';
-  }
-
-  if (st === 'REJECT') {
-    return '<span>DITOLAK</span>';
-  }
-
-  if (st === 'APPROVE') {
-    return '<span>DISETUJUI</span>';
-  }
+  if (st === 'DONE') return 'SUDAH DIPENUHI';
+  if (st === 'REJECT') return 'DITOLAK';
+  if (st === 'APPROVE') return 'DISETUJUI';
 
   if (st === 'PENDING') {
     if (!serviceAppv) {
-      if (role === 'DM') {
-        return '<span>TUNGGU SERVICE</span>';
-      }
-      return '<span>TUNGGU SERVICE</span>';
+      return 'TUNGGU SERVICE';
     } else {
-      if (role === 'SERVICE' || role === 'TOKO' || role === 'SALES') {
-        return '<span>TUNGGU DM</span>';
-      }
-      return '<span>TUNGGU APPROVAL DM</span>';
+      return 'TUNGGU DM';
     }
   }
 
-  return `<span>${st}</span>`;
+  return st || '-';
 }
 
-// DYNAMIC FORM MULTI-ROW ENGINE WITH CAMERA SCANNER TOOL IN EVERY SERIAL COLUMN
-function loadForm() {
-  document.getElementById('tanggal').value = getFormattedDateDDMMYYYY();
-
+function updateStoreDropdownOptions(selectedStoreName = '') {
   const tokoSelect = document.getElementById('toko');
+  if (!tokoSelect || !currentUser) return;
+
+  const currentVal = selectedStoreName || tokoSelect.value;
   tokoSelect.innerHTML = '';
 
   if (currentUser.category === 'TOKO') {
     tokoSelect.innerHTML = `<option value="${currentUser.fullName}">${currentUser.fullName} (${currentUser.area})</option>`;
   } else {
-    const users = getUsersFromDB();
-    // Filter toko khusus sesuai area user yang sedang login (hanya muncul area user saja)
-    const stores = users.filter(u => u.category === 'TOKO' && u.area === currentUser.area);
-    if (stores.length > 0) {
-      stores.forEach(s => {
-        tokoSelect.innerHTML += `<option value="${s.fullName}">${s.fullName} (${s.area})</option>`;
+    const allStores = getStoresFromDB();
+    const areaStores = (currentUser.category === 'DM' || currentUser.area === 'ALL') 
+      ? allStores 
+      : allStores.filter(s => s && s.area === currentUser.area);
+
+    if (areaStores.length > 0) {
+      areaStores.forEach(s => {
+        const isSelected = (currentVal && String(s.fullName).toUpperCase() === String(currentVal).toUpperCase()) ? 'selected' : '';
+        tokoSelect.innerHTML += `<option value="${s.fullName}" ${isSelected}>${s.fullName} (${s.area || currentUser.area})</option>`;
       });
     } else {
-      tokoSelect.innerHTML = `<option value="TOKO SINAR ABADI">TOKO SINAR ABADI (${currentUser.area})</option>`;
+      tokoSelect.innerHTML = `<option value="INPUT TOKO.....">INPUT TOKO..... (${currentUser.area})</option>`;
     }
   }
 
-  if (!modeEdit) {
-    bersihkanForm();
+  if (currentVal && Array.from(tokoSelect.options).some(o => o.value.toUpperCase() === currentVal.toUpperCase())) {
+    tokoSelect.value = currentVal;
+  }
+}
+window.updateStoreDropdownOptions = updateStoreDropdownOptions;
+
+function loadForm() {
+  const tglEl = document.getElementById('tanggal');
+  if (tglEl && !tglEl.value) {
+    tglEl.value = getFormattedDateDDMMYYYY();
+  }
+
+  updateStoreDropdownOptions();
+
+  const containerTambahToko = document.getElementById('containerTambahToko');
+  if (containerTambahToko) {
+    containerTambahToko.style.display = (currentUser.category === 'TOKO') ? 'none' : 'block';
+  }
+
+  if (typeof updatePhotoSectionVisibility === 'function') {
+    updatePhotoSectionVisibility();
+  }
+
+  const detailContainer = document.getElementById('detailContainer');
+  if (detailContainer && detailContainer.children.length === 0 && !modeEdit) {
+    tambahRow();
   }
 }
 
 function gantiJenis() {
   const container = document.getElementById('detailContainer');
-  if (container.children.length > 0 && !modeEdit) {
+  if (container && container.children.length > 0 && !modeEdit) {
     container.innerHTML = '';
     tambahRow();
   }
 }
 
 function tambahRow() {
-  const jenis = document.getElementById('jenisPermintaan').value;
+  const jenisEl = document.getElementById('jenisPermintaan');
+  const jenis = jenisEl ? jenisEl.value : 'DEFAULT';
   const container = document.getElementById('detailContainer');
+  if (!container) return;
 
   const div = document.createElement('div');
   div.className = `detailRow ${jenis === 'DUS' ? 'dus' : 'seri'}`;
@@ -1241,27 +2167,27 @@ function tambahRow() {
 
   if (jenis === 'DUS') {
     div.innerHTML = `
-      <input class="typeBarang" placeholder="TYPE BARANG" autocomplete="off">
+      <input type="text" inputmode="text" class="typeBarang" placeholder="TYPE BARANG" autocomplete="off">
       <div style="display:flex; gap:4px; align-items:center;">
-        <input class="seriBarang" placeholder="NO SERI" autocomplete="off" oninput="lookupTypeRow(this)" onkeyup="lookupTypeRow(this)" onblur="lookupTypeRow(this)">
+        <input type="text" inputmode="text" class="seriBarang" placeholder="NO SERI" autocomplete="off" oninput="lookupTypeRow(this)" onkeyup="lookupTypeRow(this)" onblur="lookupTypeRow(this)">
         ${scanButtonHtml}
       </div>
-      <input class="namaBarang" placeholder="PERMINTAAN" autocomplete="off">
-      <input class="seriDusBarang" placeholder="NO SERI DUS" autocomplete="off">
-      <input class="alasan" placeholder="ALASAN" autocomplete="off">
-      <input type="number" class="qty" value="1" min="1" style="text-align: center;" autocomplete="off">
+      <input type="text" inputmode="text" class="namaBarang" placeholder="PERMINTAAN" autocomplete="off">
+      <input type="text" inputmode="text" class="seriDusBarang" placeholder="NO SERI DUS" autocomplete="off">
+      <input type="text" inputmode="text" class="alasan" placeholder="ALASAN" autocomplete="off">
+      <input type="number" class="qty" value="1" min="1" style="text-align: left;" autocomplete="off">
       <button type="button" class="btnHapusRow" onclick="hapusRow(this)"><span class="material-symbols-rounded">remove</span></button>
     `;
   } else {
     div.innerHTML = `
-      <input class="typeBarang" placeholder="TYPE BARANG" autocomplete="off">
+      <input type="text" inputmode="text" class="typeBarang" placeholder="TYPE BARANG" autocomplete="off">
       <div style="display:flex; gap:4px; align-items:center;">
-        <input class="seriBarang" placeholder="NO SERI" autocomplete="off" oninput="lookupTypeRow(this)" onkeyup="lookupTypeRow(this)" onblur="lookupTypeRow(this)">
+        <input type="text" inputmode="text" class="seriBarang" placeholder="NO SERI" autocomplete="off" oninput="lookupTypeRow(this)" onkeyup="lookupTypeRow(this)" onblur="lookupTypeRow(this)">
         ${scanButtonHtml}
       </div>
-      <input class="namaBarang" placeholder="PERMINTAAN" autocomplete="off">
-      <input class="alasan" placeholder="ALASAN" autocomplete="off">
-      <input type="number" class="qty" value="1" min="1" style="text-align: center;" autocomplete="off">
+      <input type="text" inputmode="text" class="namaBarang" placeholder="PERMINTAAN" autocomplete="off">
+      <input type="text" inputmode="text" class="alasan" placeholder="ALASAN" autocomplete="off">
+      <input type="number" class="qty" value="1" min="1" style="text-align: left;" autocomplete="off">
       <button type="button" class="btnHapusRow" onclick="hapusRow(this)"><span class="material-symbols-rounded">remove</span></button>
     `;
   }
@@ -1269,9 +2195,8 @@ function tambahRow() {
   container.appendChild(div);
 }
 
-// DYNAMIC KODE UNIT LOOKUP MAP ENGINE
 function getKodeUnitMap() {
-  const customMap = JSON.parse(localStorage.getItem(KODE_UNIT_MAP_KEY) || '{}');
+  const customMap = JSON.parse(appStorage.getItem(KODE_UNIT_MAP_KEY) || '{}');
   const merged = { ...KODE_UNIT_MAP, ...customMap };
   const cleanMap = {};
   Object.keys(merged).forEach(k => {
@@ -1286,11 +2211,12 @@ function getKodeUnitMap() {
   return cleanMap;
 }
 
-// CAMERA BARCODE / QR SCANNER ENGINE (INSTANT AUTO-EXIT & AUTO-FOCUS TO PERMINTAAN COLUMN)
 function bukaScanner(btn) {
   const row = btn.closest('.detailRow');
   if (row) {
     activeScanInput = row.querySelector('.seriBarang');
+  } else {
+    activeScanInput = btn.parentElement.querySelector('.seriBarang');
   }
 
   const modal = document.getElementById('scannerModal');
@@ -1310,41 +2236,36 @@ function bukaScanner(btn) {
           { facingMode: "environment" },
           config,
           (decodedText) => {
-            const targetInput = activeScanInput;
-            const targetRow = targetInput ? targetInput.closest('.detailRow') : null;
-
-            if (targetInput) {
+            if (activeScanInput) {
               const cleanCode = String(decodedText || '').trim().toUpperCase();
-              targetInput.value = cleanCode;
-              lookupTypeRow(targetInput, true);
-              showNotif(`NO SERI BERHASIL DI-SCAN: ${cleanCode}`, 'info');
-            }
-
-            // OTOMATIS KELUAR POPUP SCANNER
-            tutupScanner();
-
-            // OTOMATIS PINDAHKAN KURSOR KE KOLOM PERMINTAAN (.namaBarang)
-            if (targetRow) {
-              const namaInput = targetRow.querySelector('.namaBarang');
-              if (namaInput) {
-                setTimeout(() => {
-                  namaInput.focus();
-                  if (typeof namaInput.select === 'function') namaInput.select();
-                }, 200);
+              
+              activeScanInput.value = cleanCode;
+              activeScanInput.setAttribute('value', cleanCode);
+              activeScanInput.dispatchEvent(new Event('input', { bubbles: true }));
+              
+              const targetRow = activeScanInput.closest('.detailRow');
+              if (targetRow) {
+                const namaInput = targetRow.querySelector('.namaBarang');
+                if (namaInput) {
+                  setTimeout(() => {
+                    namaInput.focus();
+                  }, 300);
+                }
               }
             }
+            tutupScanner();
           },
-          () => {}
+          (errorMessage) => {}
         ).catch(err => {
-          console.warn("Kamera tidak dapat diakses / fallback input manual", err);
-          showNotif('IZIN KAMERA DITOLAK ATAU TERTUTUP BROWSER!', 'warning');
+          showNotif('KAMERA TIDAK TERSEDIA ATAU DIBLOKIR BROWSER!', 'warning');
+          tutupScanner();
         });
       } catch(err) {
-        console.warn("Gagal inisialisasi html5QrCode:", err);
+        console.warn("Kesalahan inisialisasi kamera:", err);
       }
-    }, 150);
+    }, 200);
   } else {
-    showNotif('MODUL SCANNER BELUM SIAP, ATAU BROWSER TIDAK MENDUKUNG!', 'warning');
+    showNotif('MODUL SCANNER BELUM SIAP!', 'warning');
   }
 }
 
@@ -1365,19 +2286,9 @@ function tutupScanner() {
       html5QrCodeScanner = null;
     }
   }
-
-  if (activeScanInput) {
-    const row = activeScanInput.closest('.detailRow');
-    if (row) {
-      const namaInput = row.querySelector('.namaBarang');
-      if (namaInput) {
-        setTimeout(() => {
-          namaInput.focus();
-        }, 200);
-      }
-    }
-  }
-  activeScanInput = null;
+  setTimeout(() => {
+    activeScanInput = null;
+  }, 500);
 }
 
 function lookupTypeRow(el, isFromScanner = false) {
@@ -1385,25 +2296,26 @@ function lookupTypeRow(el, isFromScanner = false) {
   const rawValue = String(el.value || '').trim().toUpperCase();
   el.value = rawValue;
 
-  if (!rawValue) return;
+  if (!rawValue || rawValue.length < 4) return;
 
+  const first4Chars = rawValue.substring(0, 4);
   const fullMap = getKodeUnitMap();
-  const keys = Object.keys(fullMap).sort((a, b) => b.length - a.length);
+  const keys = Object.keys(fullMap);
 
   let matchedType = null;
 
-  // 1. Exact or Prefix match
   for (const key of keys) {
-    if (rawValue.startsWith(key) || key.startsWith(rawValue)) {
+    const cleanKey = String(key).trim().toUpperCase();
+    if (cleanKey.substring(0, 4) === first4Chars) {
       matchedType = fullMap[key];
       break;
     }
   }
 
-  // 2. Substring match fallback
   if (!matchedType) {
     for (const key of keys) {
-      if (rawValue.includes(key)) {
+      const cleanKey = String(key).trim().toUpperCase();
+      if (cleanKey.length >= 4 && rawValue.startsWith(cleanKey)) {
         matchedType = fullMap[key];
         break;
       }
@@ -1432,10 +2344,10 @@ function hapusRow(btn) {
   const row = btn.closest('.detailRow');
   if (row) row.remove();
   const container = document.getElementById('detailContainer');
-  if (container.children.length === 0) tambahRow();
+  if (container && container.children.length === 0) tambahRow();
 }
 
-function kompresiFoto(file, maxDimension = 420, quality = 0.35) {
+function kompresiFoto(file, maxDimension = 720, quality = 0.65) {
   return new Promise((resolve) => {
     if (!file || !file.type.startsWith('image/')) {
       resolve('');
@@ -1477,7 +2389,22 @@ function kompresiFoto(file, maxDimension = 420, quality = 0.35) {
 }
 
 function pilihFoto() {
-  document.getElementById('foto').click();
+  const fileInput = document.getElementById('foto');
+  if (fileInput) fileInput.click();
+}
+
+async function uploadPhotoToSupabaseStorage(file) {
+  if (typeof supabaseClient !== 'undefined' && supabaseClient) {
+    try {
+      const fileName = `FOTO_${Date.now()}_${Math.floor(Math.random()*1000)}.jpg`;
+      const { data, error } = await supabaseClient.storage.from('photos').upload(fileName, file);
+      if (!error && data) {
+        const { data: pubData } = supabaseClient.storage.from('photos').getPublicUrl(fileName);
+        if (pubData && pubData.publicUrl) return pubData.publicUrl;
+      }
+    } catch (e) {}
+  }
+  return await kompresiFoto(file, 400, 0.4);
 }
 
 async function previewFoto(event) {
@@ -1485,24 +2412,34 @@ async function previewFoto(event) {
   if (!files.length) return;
 
   if (currentPhotos.length + files.length > 5) {
-    showNotif('MAKSIMAL FOTO DIBATASI HINGGA 5 FOTO!', 'warning');
+    showNotif('MAKSIMAL FOTO DIBATASI HINGGA 5 FOTO SAJA!', 'warning');
+    event.target.value = ''; 
     return;
   }
 
-  showLoading('MENGKOMPRESI UKURAN FOTO...');
-  for (const file of files) {
+  const previewText = document.getElementById('previewText');
+  const originalText = previewText ? previewText.innerHTML : 'TAP / DRAG FOTO DI SINI';
+  if (previewText) {
+    previewText.innerHTML = `<span class="material-symbols-rounded" style="font-size:22px; vertical-align:middle; display:inline-block; animation:spin 0.8s linear infinite; color:var(--primary);">sync</span> MENGUNGGAH FOTO...`;
+  }
+
+  for (let i = 0; i < files.length; i++) {
     if (currentPhotos.length < 5) {
       try {
-        const compressedData = await kompresiFoto(file, 420, 0.35);
-        if (compressedData) {
-          currentPhotos.push(compressedData);
+        const url = await uploadPhotoToSupabaseStorage(files[i]);
+        if (url) {
+          currentPhotos.push(url);
         }
       } catch (err) {
-        console.warn('Foto Compression Error:', err);
+        console.warn('Foto Upload Error:', err);
       }
     }
   }
-  hideLoading();
+
+  if (previewText) {
+    previewText.innerHTML = originalText;
+  }
+
   renderPhotoGrid();
   event.target.value = '';
 }
@@ -1514,10 +2451,13 @@ function hapusFotoItem(idx) {
 
 function renderPhotoGrid() {
   const grid = document.getElementById('photoPreviewsGrid');
+  if (!grid) return;
   grid.innerHTML = '';
   currentPhotos.forEach((src, idx) => {
     const div = document.createElement('div');
     div.className = 'photo-preview-card';
+    div.title = "KLIK UNTUK BUKA FOTO DILAYAR PENUH";
+    div.onclick = () => window.open(src, '_blank');
     div.innerHTML = `
       <img src="${src}" alt="Foto ${idx + 1}">
       <button class="photo-del-btn" onclick="event.stopPropagation(); hapusFotoItem(${idx})">✕</button>
@@ -1562,10 +2502,8 @@ function bersihkanForm() {
     container.innerHTML = '';
   }
 
-  // Re-create 1 fresh blank row
   tambahRow();
 
-  // Sweep and wipe ALL input and textarea elements inside #inputPage
   const allInputs = document.querySelectorAll('#inputPage input, #inputPage textarea');
   allInputs.forEach(ipt => {
     if (ipt.id === 'tanggal') return;
@@ -1581,20 +2519,23 @@ function bersihkanForm() {
 }
 
 function simpanData() {
-  const toko = document.getElementById('toko').value;
-  const jenis = document.getElementById('jenisPermintaan').value;
-  const catatan = document.getElementById('catatan').value.trim().toUpperCase();
+  const tokoSelect = document.getElementById('toko');
+  const toko = tokoSelect ? tokoSelect.value : '';
+  const jenisEl = document.getElementById('jenisPermintaan');
+  const jenis = jenisEl ? jenisEl.value : 'DEFAULT';
+  const catatanEl = document.getElementById('catatan');
+  const catatan = catatanEl ? catatanEl.value.trim().toUpperCase() : '';
 
   const rows = document.querySelectorAll('.detailRow');
   let items = [];
   let valid = true;
 
   rows.forEach(r => {
-    const type = r.querySelector('.typeBarang').value.trim().toUpperCase();
-    const seri = r.querySelector('.seriBarang').value.trim().toUpperCase();
-    const barang = r.querySelector('.namaBarang').value.trim().toUpperCase();
-    const alasan = r.querySelector('.alasan').value.trim().toUpperCase();
-    const qty = parseInt(r.querySelector('.qty').value) || 1;
+    const type = r.querySelector('.typeBarang') ? r.querySelector('.typeBarang').value.trim().toUpperCase() : '';
+    const seri = r.querySelector('.seriBarang') ? r.querySelector('.seriBarang').value.trim().toUpperCase() : '';
+    const barang = r.querySelector('.namaBarang') ? r.querySelector('.namaBarang').value.trim().toUpperCase() : '';
+    const alasan = r.querySelector('.alasan') ? r.querySelector('.alasan').value.trim().toUpperCase() : '';
+    const qty = parseInt(r.querySelector('.qty') ? r.querySelector('.qty').value : '1') || 1;
     const dus = r.querySelector('.seriDusBarang') ? r.querySelector('.seriDusBarang').value.trim().toUpperCase() : '';
 
     if (!type || !seri || !barang || !alasan) valid = false;
@@ -1608,7 +2549,6 @@ function simpanData() {
     return;
   }
 
-  // SERIAL DUPLICATE CHECK IN DATABASE
   const allReq = getRequestsFromDB();
   let duplicateSerial = null;
   let duplicateNoSurat = null;
@@ -1636,7 +2576,6 @@ function simpanData() {
 }
 
 function prosesSimpanKeDB(toko, jenis, catatan, items) {
-  showLoading('MENYIMPAN DATA...');
   setTimeout(() => {
     hideLoading();
     const requests = getRequestsFromDB();
@@ -1649,9 +2588,26 @@ function prosesSimpanKeDB(toko, jenis, catatan, items) {
         requests[idx].catatan = catatan;
         requests[idx].items = items;
         requests[idx].photos = [...currentPhotos];
+        
         saveRequestsToDB(requests);
+
+        const docId = String(editNoSurat).replace(/[\/\.]/g, '_');
+        if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+          dbFirestore.collection('requests').doc(docId).set(requests[idx], { merge: true }).catch(e => console.warn(e));
+        }
+        if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+          dbRealtime.ref(`requests/${docId}`).set(requests[idx]).catch(e => console.warn(e));
+        }
+
+        if (typeof pushCentralCloudDB === 'function') {
+          pushCentralCloudDB();
+        }
+
+        showNotif(`PERMINTAAN #${editNoSurat} DATA BERHASIL DIPERBARUHI!`, 'success');
         bersihkanForm();
-        showNotif(`PERMINTAAN #${editNoSurat} BERHASIL DIPERBARUI!`, 'info');
+        pindahHalaman('riwayatPage');
+        if (typeof loadRiwayat === 'function') loadRiwayat();
+        if (typeof loadDashboard === 'function') loadDashboard();
       }
     } else {
       const now = new Date();
@@ -1660,8 +2616,9 @@ function prosesSimpanKeDB(toko, jenis, catatan, items) {
       const codeDay = String(now.getDate()).padStart(2, '0');
 
       const allStores = getStoresFromDB();
-      const matchedStore = allStores.find(s => s.fullName.toUpperCase() === toko.toUpperCase());
-      let storeCode = matchedStore ? (matchedStore.storeCode || generateStoreCode(matchedStore.fullName)) : generateStoreCode(toko);
+      const safeToko = String(toko || '').trim().toUpperCase();
+      const matchedStore = allStores.find(s => s && s.fullName && String(s.fullName).trim().toUpperCase() === safeToko);
+      let storeCode = matchedStore ? (matchedStore.storeCode || generateStoreCode(matchedStore.fullName)) : generateStoreCode(safeToko);
 
       const seqNo = String(requests.length + 1).padStart(2, '0');
       const noSurat = `PRMT/${currentUser.area}-${storeCode}/${codeYear}${codeMonth}${codeDay}${seqNo}`;
@@ -1684,11 +2641,23 @@ function prosesSimpanKeDB(toko, jenis, catatan, items) {
       };
       requests.unshift(newRecord);
       saveRequestsToDB(requests);
-      bersihkanForm();
-      showNotif(`PERMINTAAN #${noSurat} BERHASIL DISIMPAN!`, 'info');
 
-      // WA AUTOMATION TRIGGER 1: NEW REQUEST CREATED -> NOTIFY SERVICE IN AREA
-      tambahNotifikasiSistem(['SERVICE'], currentUser.area, `PERMINTAAN BARU #${noSurat} DARI ${toko} (${currentUser.area}). MOHON SEGERA DIPERIKSA DI APLIKASI.`, noSurat);
+      const docId = String(noSurat).replace(/[\/\.]/g, '_');
+      if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+        dbFirestore.collection('requests').doc(docId).set(newRecord).catch(e => console.warn('[FIRESTORE SAVE NOTICE]:', e));
+      }
+      if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+        dbRealtime.ref(`requests/${docId}`).set(newRecord).catch(e => console.warn('[REALTIME SAVE NOTICE]:', e));
+      }
+
+      if (typeof pushCentralCloudDB === 'function') {
+        pushCentralCloudDB();
+      }
+
+      showNotif(`PERMINTAAN #${noSurat} DATA BERHASIL DISIMPAN!`, 'success');
+      bersihkanForm();
+
+      // REMINDER DIKIRIM HANYA VIA WHATSAPP (FONNTE API), TIDAK LEWAT SYSTEM BELL NOTIFIKASI
       const allUsers = getUsersFromDB();
       const serviceUsers = allUsers.filter(u => u.category === 'SERVICE' && u.area === currentUser.area);
       serviceUsers.forEach(srv => {
@@ -1696,22 +2665,28 @@ function prosesSimpanKeDB(toko, jenis, catatan, items) {
           kirimNotifikasiWA(srv.phone, `PERMINTAAN BARU #${noSurat} DARI ${toko} (${currentUser.area}). MOHON SEGERA DIPERIKSA DI APLIKASI.`);
         }
       });
-    }
 
-    pindahHalaman('riwayatPage');
-  }, 400);
+      pindahHalaman('riwayatPage');
+      if (typeof loadRiwayat === 'function') loadRiwayat();
+      if (typeof loadDashboard === 'function') loadDashboard();
+      if (currentUser && currentUser.category === 'SERVICE' && currentUser.area === 'TSM' && typeof loadMasterDbTable === 'function') {
+        loadMasterDbTable();
+      }
+    }
+  }, 200);
 }
 
-// MAIN HISTORY TABLE
 function bukaMenuRiwayat() {
   filterStatusRiwayat = '';
-  document.getElementById('searchRiwayat').value = '';
+  const searchInput = document.getElementById('searchRiwayat');
+  if (searchInput) searchInput.value = '';
   showPage('riwayatPage');
 }
 
 function bukaRiwayat(status) {
   filterStatusRiwayat = status;
-  document.getElementById('searchRiwayat').value = '';
+  const searchInput = document.getElementById('searchRiwayat');
+  if (searchInput) searchInput.value = '';
   showPage('riwayatPage');
 }
 
@@ -1724,14 +2699,18 @@ function loadRiwayat() {
 }
 
 function filterRiwayatDropdown() {
-  filterStatusRiwayat = document.getElementById('filterStatusDropdown').value;
-  if (filterStatusRiwayat === 'ALL') filterStatusRiwayat = '';
+  const dropdown = document.getElementById('filterStatusDropdown');
+  if (dropdown) {
+    filterStatusRiwayat = dropdown.value;
+    if (filterStatusRiwayat === 'ALL') filterStatusRiwayat = '';
+  }
   filterRiwayat();
 }
 
 function filterRiwayat() {
   let data = getAccessibleRequests();
-  const search = document.getElementById('searchRiwayat').value.toLowerCase().trim();
+  const searchInput = document.getElementById('searchRiwayat');
+  const search = searchInput ? searchInput.value.toLowerCase().trim() : '';
 
   if (filterStatusRiwayat && filterStatusRiwayat !== 'ALL') {
     data = data.filter(r => r.status === filterStatusRiwayat);
@@ -1747,7 +2726,9 @@ function filterRiwayat() {
 
   const thead = document.querySelector('.historyTable thead');
   const tbody = document.getElementById('riwayatData');
-  const role = currentUser.category;
+  if (!thead || !tbody) return;
+
+  const role = currentUser ? currentUser.category : '';
 
   thead.innerHTML = `
     <tr>
@@ -1755,6 +2736,7 @@ function filterRiwayat() {
       <th>TGL</th>
       <th>NO SURAT</th>
       <th>TOKO</th>
+      <th>JENIS</th>
       <th>STATUS</th>
       <th>CATATAN</th>
     </tr>
@@ -1763,14 +2745,16 @@ function filterRiwayat() {
   tbody.innerHTML = '';
 
   if (data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--text-muted);">BELUM ADA DATA PERMINTAAN.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted);">BELUM ADA DATA PERMINTAAN.</td></tr>`;
     return;
   }
 
   data.forEach(r => {
     let aksi = '';
 
-    if (role === 'ADMIN' || (currentUser.username && currentUser.username.toUpperCase() === 'ADMIN')) {
+    const isAdminUser = currentUser && (currentUser.category === 'ADMIN' || (currentUser.username && currentUser.username.toUpperCase() === 'ADMIN'));
+
+    if (isAdminUser) {
       if (r.status === 'PENDING' && !r.serviceApprove) {
         aksi += `
           <button class="btnIcon btnApprove" onclick="approveService('${r.noSurat}')" title="APPROVE SERVICE"><span class="material-symbols-rounded">check_circle</span></button>
@@ -1806,49 +2790,258 @@ function filterRiwayat() {
       }
     }
 
+    const isOwner = currentUser && (r.userId === currentUser.id || r.createdBy === currentUser.fullName || r.createdBy === currentUser.username);
+    const canEdit = (r.status === 'PENDING' && !r.serviceApprove && isOwner) || (isAdminUser && r.status === 'PENDING');
+    const canDelete = (r.status === 'PENDING' && !r.serviceApprove && isOwner) || isAdminUser;
+
+    if (canEdit) {
+      aksi += `
+        <button class="btnIcon btnEdit" onclick="editPermintaan('${r.noSurat}')" title="EDIT PERMINTAAN"><span class="material-symbols-rounded">edit</span></button>
+      `;
+    }
+
+    if (canDelete) {
+      aksi += `
+        <button class="btnIcon btnDelete" onclick="hapusData('${r.noSurat}')" title="HAPUS PERMINTAAN"><span class="material-symbols-rounded">delete</span></button>
+      `;
+    }
+
     aksi += `
       <button class="btnIcon btnInfo" onclick="lihatDetail('${r.noSurat}')" title="LIHAT DETAIL"><span class="material-symbols-rounded">visibility</span></button>
     `;
 
-    const isPhotoHidden = (r.status === 'APPROVE' || r.status === 'DONE' || r.status === 'REJECT');
+    const isPhotoHidden = (r.status === 'APPROVE' || r.status === 'DONE' || r.status === 'REJECT') || !getFeaturePhotosEnabled();
     if (r.photos && r.photos.length > 0 && !isPhotoHidden) {
       aksi += `
         <button class="btnIcon btnView" onclick="lihatFotoByNoSurat('${r.noSurat}')" title="LIHAT FOTO"><span class="material-symbols-rounded">image</span></button>
       `;
     }
 
-    const isPdfVisible = (r.status === 'APPROVE');
+    const isPdfVisible = (r.status === 'APPROVE' || r.status === 'DONE' || (isAdminUser && r.status !== 'REJECT'));
     if (isPdfVisible) {
       aksi += `
         <button class="btnIcon btnPdf" onclick="bukaPdfModal('${r.noSurat}')" title="CETAK PDF"><span class="material-symbols-rounded">picture_as_pdf</span></button>
       `;
     }
 
+    const isWaitingDM = (r.status === 'PENDING' && r.serviceApprove);
+    const isWaitingService = (r.status === 'PENDING' && !r.serviceApprove);
+
+    let isOrangeRow = false;
+    if (currentUser) {
+      const cat = (currentUser.category || '').toUpperCase();
+      const isAdm = cat === 'ADMIN' || (currentUser.username && currentUser.username.toUpperCase() === 'ADMIN');
+      if ((cat === 'DM' || isAdm) && isWaitingDM) {
+        isOrangeRow = true;
+      } else if ((cat === 'SERVICE' || isAdm) && isWaitingService) {
+        isOrangeRow = true;
+      }
+    }
+
     const tr = document.createElement('tr');
+    if (shouldRowBlinkRed(r)) {
+      tr.className = 'blink-row-red';
+    }
     tr.innerHTML = `
       <td><div style="display:flex; gap:4px; align-items:center;">${aksi}</div></td>
-      <td style="white-space:nowrap;">${r.tanggal}</td>
+      <td style="white-space:nowrap;">${formatDateDDMMYYYYString(r.tanggal)}</td>
       <td>${r.noSurat}</td>
-      <td>${r.toko} <div style="font-size:11px; color:var(--primary);">${r.area}</div></td>
-      <td>${getBadgeStatus(r.status)}</td>
-      <td style="word-break:break-word; white-space:normal; color:var(--text-main);">${r.catatan || '-'}</td>
+      <td>${r.toko} <div style="font-size:11px; opacity:0.8;">${r.area}</div></td>
+      <td style="white-space:nowrap;">${r.jenis || 'DEFAULT'}</td>
+      <td>${getBadgeStatus(r)}</td>
+      <td style="word-break:break-word; white-space:normal;">${r.catatan || '-'}</td>
     `;
     tbody.appendChild(tr);
   });
 }
 
 function lihatFotoByNoSurat(noSurat) {
+  if (!getFeaturePhotosEnabled()) {
+    showNotif('FITUR UPLOAD & LIHAT FOTO SEDANG DINOAKTIFKAN OLEH ADMIN!', 'warning');
+    return;
+  }
   const requests = getRequestsFromDB();
   const req = requests.find(r => r.noSurat === noSurat);
   if (req && req.photos && req.photos.length > 0) {
-    zoomFoto(req.photos[0]);
+    viewerPhotos = req.photos;
+    viewerCurrentIndex = 0;
+    tampilkanFotoViewerAktif();
+    
+    if (typeof pushPopupHistoryState === 'function') {
+      pushPopupHistoryState();
+    }
+  } else {
+    showNotif('TIDAK ADA FOTO UNTUK PERMINTAAN INI!', 'warning');
   }
 }
 
-// APPROVAL ACTIONS WITH WA AUTOMATION TRIGGERS
+let viewerCurrentZoom = 1;
+let viewerPanX = 0;
+let viewerPanY = 0;
+let isDraggingViewerImage = false;
+let startDragX = 0;
+let startDragY = 0;
+let initialPinchDistance = 0;
+let initialPinchZoom = 1;
+
+function applyViewerTransform() {
+  const img = document.getElementById('viewerImage');
+  if (!img) return;
+  if (viewerCurrentZoom <= 1) {
+    viewerCurrentZoom = 1;
+    viewerPanX = 0;
+    viewerPanY = 0;
+  }
+  img.style.transform = `translate(${viewerPanX}px, ${viewerPanY}px) scale(${viewerCurrentZoom})`;
+  img.style.cursor = viewerCurrentZoom > 1 ? (isDraggingViewerImage ? 'grabbing' : 'grab') : 'pointer';
+}
+
+function zoomImage(delta) {
+  viewerCurrentZoom += delta;
+  if (viewerCurrentZoom < 1) viewerCurrentZoom = 1;
+  if (viewerCurrentZoom > 5) viewerCurrentZoom = 5;
+  applyViewerTransform();
+}
+
+function resetZoom() {
+  viewerCurrentZoom = 1;
+  viewerPanX = 0;
+  viewerPanY = 0;
+  applyViewerTransform();
+}
+
+function initPhotoViewerGestureListeners() {
+  const modal = document.getElementById('imageViewer');
+  const img = document.getElementById('viewerImage');
+  if (!modal || !img || modal.dataset.gesturesInited) return;
+  modal.dataset.gesturesInited = 'true';
+
+  // Touch Start (Pinch or Pan)
+  modal.addEventListener('touchstart', (e) => {
+    if (e.target.closest('#navViewerLeft') || e.target.closest('#navViewerRight') || e.target.closest('.closeViewer') || e.target.closest('.viewerBottomBar')) {
+      return;
+    }
+
+    if (e.touches.length === 2) {
+      isDraggingViewerImage = false;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      initialPinchDistance = Math.hypot(dx, dy);
+      initialPinchZoom = viewerCurrentZoom;
+    } else if (e.touches.length === 1 && viewerCurrentZoom > 1) {
+      isDraggingViewerImage = true;
+      startDragX = e.touches[0].clientX - viewerPanX;
+      startDragY = e.touches[0].clientY - viewerPanY;
+    }
+  }, { passive: false });
+
+  // Touch Move
+  modal.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && initialPinchDistance > 0) {
+      if (e.cancelable) e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0) {
+        viewerCurrentZoom = initialPinchZoom * (dist / initialPinchDistance);
+        if (viewerCurrentZoom < 1) viewerCurrentZoom = 1;
+        if (viewerCurrentZoom > 5) viewerCurrentZoom = 5;
+        applyViewerTransform();
+      }
+    } else if (e.touches.length === 1 && isDraggingViewerImage && viewerCurrentZoom > 1) {
+      if (e.cancelable) e.preventDefault();
+      viewerPanX = e.touches[0].clientX - startDragX;
+      viewerPanY = e.touches[0].clientY - startDragY;
+      applyViewerTransform();
+    }
+  }, { passive: false });
+
+  // Touch End
+  modal.addEventListener('touchend', (e) => {
+    if (e.touches.length < 2) {
+      initialPinchDistance = 0;
+    }
+    if (e.touches.length === 0) {
+      isDraggingViewerImage = false;
+    }
+  });
+
+  // Mouse Drag (PC/Laptop)
+  img.addEventListener('mousedown', (e) => {
+    if (viewerCurrentZoom > 1) {
+      isDraggingViewerImage = true;
+      startDragX = e.clientX - viewerPanX;
+      startDragY = e.clientY - viewerPanY;
+      applyViewerTransform();
+      e.preventDefault();
+    }
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (isDraggingViewerImage && viewerCurrentZoom > 1) {
+      viewerPanX = e.clientX - startDragX;
+      viewerPanY = e.clientY - startDragY;
+      applyViewerTransform();
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (isDraggingViewerImage) {
+      isDraggingViewerImage = false;
+      applyViewerTransform();
+    }
+  });
+
+  // Mouse Wheel Zoom
+  modal.addEventListener('wheel', (e) => {
+    if (e.target.closest('.viewerBottomBar')) return;
+    if (e.cancelable) e.preventDefault();
+    if (e.deltaY < 0) {
+      zoomImage(0.25);
+    } else {
+      zoomImage(-0.25);
+    }
+  }, { passive: false });
+}
+
+function tampilkanFotoViewerAktif() {
+  viewerCurrentZoom = 1;
+  viewerPanX = 0;
+  viewerPanY = 0;
+  applyViewerTransform();
+
+  const img = document.getElementById('viewerImage');
+  if (img && viewerPhotos.length > 0) {
+    img.src = viewerPhotos[viewerCurrentIndex];
+  }
+  const modal = document.getElementById('imageViewer');
+  if (modal) {
+    modal.style.display = 'flex';
+    initPhotoViewerGestureListeners();
+  }
+  
+  const btnLeft = document.getElementById('navViewerLeft');
+  const btnRight = document.getElementById('navViewerRight');
+  const textCounter = document.getElementById('viewerCounter');
+  
+  if (btnLeft) btnLeft.style.display = viewerPhotos.length > 1 ? 'flex' : 'none';
+  if (btnRight) btnRight.style.display = viewerPhotos.length > 1 ? 'flex' : 'none';
+  if (textCounter) textCounter.textContent = `${viewerCurrentIndex + 1} / ${viewerPhotos.length}`;
+}
+
+function gantiFotoViewer(arah) {
+  viewerCurrentIndex += arah;
+  if (viewerCurrentIndex < 0) {
+    viewerCurrentIndex = viewerPhotos.length - 1;
+  } else if (viewerCurrentIndex >= viewerPhotos.length) {
+    viewerCurrentIndex = 0;
+  }
+  tampilkanFotoViewerAktif();
+}
+
 function approveService(noSurat) {
-  showConfirm(`APPROVE PERMINTAAN?`, () => {
-    showLoading('MEMPROSES...');
+  showConfirm(`APPROVE PERMINTAAN #${noSurat}?`, () => {
+    showLoading('');
     setTimeout(() => {
       hideLoading();
       const requests = getRequestsFromDB();
@@ -1857,8 +3050,7 @@ function approveService(noSurat) {
         requests[idx].serviceApprove = true;
         requests[idx].serviceUserName = currentUser.fullName;
 
-        // Auto attach Service User's Digital Signature from profile
-        const ttdMap = JSON.parse(localStorage.getItem(TTD_DB_KEY) || '{}');
+        const ttdMap = JSON.parse(appStorage.getItem(TTD_DB_KEY) || '{}');
         const sig = ttdMap[currentUser.id] || ttdMap[currentUser.username] || ttdMap['SERVICE_' + currentUser.area] || ttdMap['SERVICE'] || '';
         if (sig) {
           requests[idx].serviceTTD = sig;
@@ -1872,10 +3064,9 @@ function approveService(noSurat) {
           time: `${getFormattedDateDDMMYYYY()} ${new Date().toLocaleTimeString('id-ID')}`
         });
         saveRequestsToDB(requests);
-        showNotif(`APPROVE SERVICE BERHASIL UNTUK #${noSurat}!`, 'info');
+        showNotif(`APPROVE BERHASIL`, 'info');
 
-        // WA AUTOMATION TRIGGER 2: SERVICE APPROVE -> NOTIFY DM PUSAT
-        tambahNotifikasiSistem(['DM'], 'ALL', `PERMINTAAN #${noSurat} DARI ${requests[idx].toko} TELAH DISETUJUI SERVICE (${currentUser.fullName}). MOHON APPROVAL DM.`, noSurat);
+        // REMINDER DIKIRIM HANYA VIA WHATSAPP (FONNTE API), TIDAK LEWAT SYSTEM BELL NOTIFIKASI
         const users = getUsersFromDB();
         const dmUsers = users.filter(u => u.category === 'DM');
         dmUsers.forEach(dm => {
@@ -1893,18 +3084,28 @@ function approveService(noSurat) {
 }
 
 function approveDM(noSurat) {
-  showConfirm(`APPROVE PERMINTAAN?`, () => {
-    showLoading('MEMPROSES...');
+  const requests = getRequestsFromDB();
+  const req = requests.find(r => r.noSurat === noSurat);
+  if (req && !req.serviceApprove) {
+    showNotif('PERMINTAAN WAJIB DI-APPROVE OLEH SERVICE TERLEBIH DAHULU SEBELUM DM DAPAT MEMPROSES APPROVAL!', 'warning');
+    return;
+  }
+
+  showConfirm(`APPROVE PERMINTAAN #${noSurat}?`, () => {
+    showLoading('');
     setTimeout(() => {
       hideLoading();
       const requests = getRequestsFromDB();
       const idx = requests.findIndex(r => r.noSurat === noSurat);
       if (idx !== -1) {
+        if (!requests[idx].serviceApprove) {
+          showNotif('PERMINTAAN WAJIB DI-APPROVE OLEH SERVICE TERLEBIH DAHULU!', 'warning');
+          return;
+        }
         requests[idx].status = 'APPROVE';
         requests[idx].dmUserName = currentUser.fullName;
 
-        // Auto attach DM User's Digital Signature from profile
-        const ttdMap = JSON.parse(localStorage.getItem(TTD_DB_KEY) || '{}');
+        const ttdMap = JSON.parse(appStorage.getItem(TTD_DB_KEY) || '{}');
         const sig = ttdMap[currentUser.id] || ttdMap[currentUser.username] || ttdMap['DM'] || '';
         if (sig) {
           requests[idx].dmTTD = sig;
@@ -1914,19 +3115,18 @@ function approveDM(noSurat) {
         requests[idx].log.push({
           action: 'APPROVE_DM',
           user: currentUser.fullName,
-          notes: 'DISETUJUI DM PUSAT',
+          notes: 'DISETUJUI DM',
           time: `${getFormattedDateDDMMYYYY()} ${new Date().toLocaleTimeString('id-ID')}`
         });
         saveRequestsToDB(requests);
-        showNotif(`APPROVE DM PUSAT BERHASIL UNTUK #${noSurat}!`, 'info');
+        showNotif(`APPROVE BERHASIL`, 'info');
 
-        // WA AUTOMATION TRIGGER 3: DM APPROVE -> NOTIFY SERVICE IN AREA & TOKO
         tambahNotifikasiSistem(['SERVICE', 'TOKO', 'SALES'], requests[idx].area, `PERMINTAAN #${noSurat} DARI ${requests[idx].toko} TELAH DISETUJUI DM PUSAT. SILAKAN DIPROSES.`, noSurat);
         const users = getUsersFromDB();
         const serviceUsers = users.filter(u => u.category === 'SERVICE' && u.area === requests[idx].area);
         serviceUsers.forEach(srv => {
           if (srv.phone) {
-            kirimNotifikasiWA(srv.phone, `PERMINTAAN #${noSurat} DARI ${requests[idx].toko} TELAH DISETUJUI DM PUSAT. SILAKAN DIPROSES.`);
+            kirimNotifikasiWA(srv.phone, `PERMINTAAN #${noSurat} DARI ${requests[idx].toko} TELAH DISETUJUI DM. SILAKAN DIPROSES.`);
           }
         });
 
@@ -1940,7 +3140,7 @@ function approveDM(noSurat) {
 
 function doneService(noSurat) {
   showConfirm(`UBAH STATUS PERMINTAAN #${noSurat} MENJADI DONE?`, () => {
-    showLoading('MEMPROSES...');
+    showLoading('');
     setTimeout(() => {
       hideLoading();
       const requests = getRequestsFromDB();
@@ -1957,7 +3157,6 @@ function doneService(noSurat) {
         saveRequestsToDB(requests);
         showNotif(`PERMINTAAN #${noSurat} DITANDAI DONE!`, 'info');
 
-        // WA AUTOMATION TRIGGER 4: SERVICE SETS DONE -> NOTIFY CREATOR (TOKO/SALES)
         tambahNotifikasiSistem(['TOKO', 'SALES'], requests[idx].area, `PERMINTAAN #${noSurat} DARI ${requests[idx].toko} TELAH SELESAI (DONE).`, noSurat);
         const users = getUsersFromDB();
         const creator = users.find(u => u.id === requests[idx].userId || u.fullName === requests[idx].createdBy);
@@ -1974,15 +3173,24 @@ function doneService(noSurat) {
 }
 
 function tolakServiceModal(noSurat, roleType) {
-  document.getElementById('rejectNoSurat').value = noSurat;
-  document.getElementById('rejectRoleType').value = roleType;
-  document.getElementById('rejectReason').value = '';
-  document.getElementById('rejectTitle').textContent = `TOLAK PERMINTAAN`;
-  document.getElementById('rejectOverlay').style.display = 'flex';
+  const elNo = document.getElementById('rejectNoSurat');
+  const elRole = document.getElementById('rejectRoleType');
+  const elReason = document.getElementById('rejectReason');
+  const elTitle = document.getElementById('rejectTitle');
+
+  if (elNo) elNo.value = noSurat;
+  if (elRole) elRole.value = roleType;
+  if (elReason) elReason.value = '';
+  if (elTitle) elTitle.textContent = `TOLAK PERMINTAAN`;
+  
+  const modal = document.getElementById('rejectOverlay');
+  if (modal) modal.style.display = 'flex';
+  pushPopupHistoryState();
 }
 
 function closeReject() {
-  document.getElementById('rejectOverlay').style.display = 'none';
+  const modal = document.getElementById('rejectOverlay');
+  if (modal) modal.style.display = 'none';
 }
 
 function kirimReject() {
@@ -1996,7 +3204,7 @@ function kirimReject() {
   }
 
   closeReject();
-  showLoading('MEMPROSES PENOLAKAN...');
+  showLoading('');
   setTimeout(() => {
     hideLoading();
     const requests = getRequestsFromDB();
@@ -2012,27 +3220,25 @@ function kirimReject() {
         time: `${getFormattedDateDDMMYYYY()} ${new Date().toLocaleTimeString('id-ID')}`
       });
       saveRequestsToDB(requests);
-      showNotif(`PERMINTAAN #${noSurat} BERHASIL DITOLAK.`, 'info');
+      showNotif(`PERMINTAAN BERHASIL DITOLAK`, 'info');
 
       const users = getUsersFromDB();
       const creator = users.find(u => u.id === requests[idx].userId || u.fullName === requests[idx].createdBy);
 
       if (roleType === 'SERVICE') {
-        // WA AUTOMATION TRIGGER 5: SERVICE REJECTS -> NOTIFY CREATOR
         tambahNotifikasiSistem(['TOKO', 'SALES'], requests[idx].area, `PERMINTAAN #${noSurat} DITOLAK SERVICE. CATATAN: ${alasan}`, noSurat);
         if (creator && creator.phone) {
           kirimNotifikasiWA(creator.phone, `PERMINTAAN #${noSurat} DITOLAK SERVICE. CATATAN: ${alasan}`);
         }
       } else if (roleType === 'DM') {
-        // WA AUTOMATION TRIGGER 6: DM REJECTS -> NOTIFY SERVICE IN AREA & CREATOR
-        tambahNotifikasiSistem(['SERVICE', 'TOKO', 'SALES'], requests[idx].area, `PERMINTAAN #${noSurat} DARI ${requests[idx].toko} DITOLAK DM PUSAT. CATATAN: ${alasan}`, noSurat);
+        tambahNotifikasiSistem(['SERVICE', 'TOKO', 'SALES'], requests[idx].area, `PERMINTAAN #${noSurat} DARI ${requests[idx].toko} DITOLAK DM. CATATAN: ${alasan}`, noSurat);
         if (creator && creator.phone) {
-          kirimNotifikasiWA(creator.phone, `PERMINTAAN #${noSurat} DITOLAK DM PUSAT. CATATAN: ${alasan}`);
+          kirimNotifikasiWA(creator.phone, `PERMINTAAN #${noSurat} DITOLAK DM. CATATAN: ${alasan}`);
         }
         const serviceUsers = users.filter(u => u.category === 'SERVICE' && u.area === requests[idx].area);
         serviceUsers.forEach(srv => {
           if (srv.phone) {
-            kirimNotifikasiWA(srv.phone, `PERMINTAAN #${noSurat} DARI ${requests[idx].toko} DITOLAK DM PUSAT. CATATAN: ${alasan}`);
+            kirimNotifikasiWA(srv.phone, `PERMINTAAN #${noSurat} DARI ${requests[idx].toko} DITOLAK DM. CATATAN: ${alasan}`);
           }
         });
       }
@@ -2049,70 +3255,116 @@ function editPermintaan(noSurat) {
   const req = requests.find(r => r.noSurat === noSurat);
   if (!req) return;
 
+  const isAdminUser = currentUser && (currentUser.category === 'ADMIN' || (currentUser.username && currentUser.username.toUpperCase() === 'ADMIN'));
+  if (req.serviceApprove && !isAdminUser) {
+    showNotif('PERMINTAAN TERKUNCI! TIDAK DAPAT DIUBAH KARENA SUDAH DI-APPROVE SERVICE.', 'warning');
+    return;
+  }
+
   modeEdit = true;
   editNoSurat = req.noSurat;
 
   pindahHalaman('inputPage');
 
-  document.getElementById('toko').value = req.toko;
-  document.getElementById('jenisPermintaan').value = req.jenis;
-  document.getElementById('catatan').value = req.catatan || '';
+  const tokoEl = document.getElementById('toko');
+  const jenisEl = document.getElementById('jenisPermintaan');
+  const catatanEl = document.getElementById('catatan');
+
+  if (tokoEl) tokoEl.value = req.toko;
+  if (jenisEl) jenisEl.value = req.jenis;
+  if (catatanEl) catatanEl.value = req.catatan || '';
 
   gantiJenis();
 
   const container = document.getElementById('detailContainer');
-  container.innerHTML = '';
+  if (container) {
+    container.innerHTML = '';
 
-  req.items.forEach(item => {
-    tambahRow();
-    const row = container.lastElementChild;
-    if (row.querySelector('.typeBarang')) row.querySelector('.typeBarang').value = item.type || '';
-    if (row.querySelector('.seriBarang')) row.querySelector('.seriBarang').value = item.seri || '';
-    if (row.querySelector('.seriDusBarang')) row.querySelector('.seriDusBarang').value = item.dus || '';
-    if (row.querySelector('.namaBarang')) row.querySelector('.namaBarang').value = item.barang || '';
-    if (row.querySelector('.qty')) row.querySelector('.qty').value = item.qty || 1;
-    if (row.querySelector('.alasan')) row.querySelector('.alasan').value = item.alasan || '';
-  });
+    req.items.forEach(item => {
+      tambahRow();
+      const row = container.lastElementChild;
+      if (row.querySelector('.typeBarang')) row.querySelector('.typeBarang').value = item.type || '';
+      if (row.querySelector('.seriBarang')) row.querySelector('.seriBarang').value = item.seri || '';
+      if (row.querySelector('.seriDusBarang')) row.querySelector('.seriDusBarang').value = item.dus || '';
+      if (row.querySelector('.namaBarang')) row.querySelector('.namaBarang').value = item.barang || '';
+      if (row.querySelector('.qty')) row.querySelector('.qty').value = item.qty || 1;
+      if (row.querySelector('.alasan')) row.querySelector('.alasan').value = item.alasan || '';
+    });
+  }
 
   currentPhotos = [...(req.photos || [])];
   renderPhotoGrid();
 
-  document.getElementById('btnSimpan').textContent = 'SIMPAN PERUBAHAN';
+  const btnSimpan = document.getElementById('btnSimpan');
+  if (btnSimpan) btnSimpan.textContent = 'SIMPAN PERUBAHAN';
 }
+
+function editData(noSurat) {
+  editPermintaan(noSurat);
+}
+window.editData = editData;
+window.editPermintaan = editPermintaan;
 
 function hapusData(noSurat) {
-  showConfirm(`HAPUS PERMANEN DATA PERMINTAAN #${noSurat}?`, () => {
-    showLoading('MENGHAPUS...');
-    setTimeout(() => {
-      hideLoading();
-      const requests = getRequestsFromDB().filter(r => r.noSurat !== noSurat);
+  if (!noSurat) return;
+  showConfirm(`HAPUS DATA PERMINTAAN #${noSurat}?`, () => {
+    try {
+      // 1. HAPUS DARI CACHE LOKAL SEKETIKA
+      const currentReqs = getRequestsFromDB();
+      const updatedReqs = currentReqs.filter(r => r.noSurat !== noSurat);
       
-      const delReqs = JSON.parse(localStorage.getItem(DELETED_REQUESTS_KEY) || '[]');
+      const delReqs = JSON.parse(appStorage.getItem(DELETED_REQUESTS_KEY) || '[]');
       if (!delReqs.includes(noSurat)) delReqs.push(noSurat);
-      localStorage.setItem(DELETED_REQUESTS_KEY, JSON.stringify(delReqs));
+      appStorage.setItem(DELETED_REQUESTS_KEY, JSON.stringify(delReqs));
 
-      saveRequestsToDB(requests);
-      showNotif(`PERMINTAAN #${noSurat} BERHASIL DIHAPUS.`, 'info');
-      loadRiwayat();
-      loadDashboard();
-      if (currentUser.category === 'SERVICE' && currentUser.area === 'TSM') loadMasterDbTable();
-    }, 300);
+      saveRequestsToDB(updatedReqs);
+
+      // 2. HAPUS DOKUMEN DARI FIREBASE FIRESTORE & REALTIME DB ONLINE
+      const docId = String(noSurat).replace(/[\/\.]/g, '_');
+      if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+        dbFirestore.collection('requests').doc(docId).delete().catch(err => console.warn('[FIRESTORE DELETE NOTICE]:', err));
+      }
+      if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+        dbRealtime.ref(`requests/${docId}`).remove().catch(err => console.warn('[REALTIME DELETE NOTICE]:', err));
+      }
+
+      // 3. SINKRONKAN KE FIREBASE CLOUD
+      if (typeof pushCentralCloudDB === 'function') {
+        pushCentralCloudDB();
+      }
+
+      // 4. RE-RENDER TAMPILAN & TAMPILKAN NOTIFIKASI
+      hideLoading();
+      showNotif(`PERMINTAAN BERHASIL DIHAPUS!`, 'info');
+      
+      if (typeof loadRiwayat === 'function') loadRiwayat();
+      if (typeof loadDashboard === 'function') loadDashboard();
+      if (currentUser && currentUser.category === 'SERVICE' && currentUser.area === 'TSM' && typeof loadMasterDbTable === 'function') {
+        loadMasterDbTable();
+      }
+    } catch (err) {
+      hideLoading();
+      console.error('[HAPUS DATA ERROR]:', err);
+      showNotif('GAGAL MENGHAPUS DATA PERMINTAAN!', 'error');
+    }
   });
 }
+window.hapusData = hapusData;
 
-// LIHAT DETAIL POPUP MODAL (SHOW ALL ACTION BUTTONS AT BOTTOM WHEN CLICKED FROM DASHBOARD)
 function lihatDetail(noSurat, fromDashboard = false) {
   const requests = getRequestsFromDB();
   const req = requests.find(r => r.noSurat === noSurat);
   if (!req) return;
 
-  document.getElementById('popupTitle').textContent = 'DETAIL PERMINTAAN';
+  const popupTitle = document.getElementById('popupTitle');
+  if (popupTitle) popupTitle.textContent = 'DETAIL PERMINTAAN';
   const msgBox = document.getElementById('popupMessage');
+  if (!msgBox) return;
 
   let headerInfoHtml = `
-    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid var(--border-color); padding-bottom:10px; margin-bottom:14px; font-size:13px; color:var(--text-main);">
-      <div style="text-align:left;">NO SURAT : <span style="color:var(--primary);">${req.noSurat}</span></div>
-      <div style="text-align:right;">TOKO : <span>${req.toko}</span></div>
+    <div class="detailHeaderInfo" style="display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; justify-content: flex-start !important; align-items: center !important; gap: 2cm !important; padding: 10px 18px !important; margin-top: 2mm !important; margin-bottom: 0 !important; border-bottom: 1px solid #e2e8f0 !important; font-size: 13px !important; color: #0f172a !important; background: #ffffff !important; width: 100% !important; box-sizing: border-box !important; white-space: nowrap !important;">
+      <div class="noSuratWrap" style="text-align: left !important; white-space: nowrap !important; flex-shrink: 0 !important;">NO SURAT : <span class="noSuratVal" style="color: var(--primary) !important; font-weight: 700 !important;">${req.noSurat}</span></div>
+      <div class="tokoWrap" style="text-align: left !important; white-space: nowrap !important; flex-shrink: 0 !important; margin-left: 0 !important;">TOKO : <span class="tokoVal" style="font-weight: 700 !important; color: #0f172a !important;">${req.toko}</span></div>
     </div>
   `;
 
@@ -2131,134 +3383,362 @@ function lihatDetail(noSurat, fromDashboard = false) {
   `).join('');
 
   let bottomActionsHtml = '';
+  let actionButtons = [];
+  const role = currentUser ? currentUser.category : '';
+  const isAdminUser = currentUser && (currentUser.category === 'ADMIN' || (currentUser.username && currentUser.username.toUpperCase() === 'ADMIN'));
 
-  if (fromDashboard) {
-    let actionButtons = [];
-    const role = currentUser.category;
-
-    if (role === 'SERVICE') {
-      if (req.status === 'PENDING' && !req.serviceApprove) {
+  if (req.status === 'PENDING') {
+    if (role === 'SERVICE' || isAdminUser) {
+      if (!req.serviceApprove) {
         actionButtons.push(`
-          <button type="button" class="btnIcon btnApprove" style="width:auto; padding:8px 16px; border-radius:8px;" onclick="closeDetail(); approveService('${req.noSurat}');">
-            <span class="material-symbols-rounded">check_circle</span> APPROVE SERVICE
+          <button type="button" class="btnIcon btnApprove btnIconOnly" title="APPROVE" onclick="closeDetail(); approveService('${req.noSurat}');">
+            <span class="material-symbols-rounded">check_circle</span>
           </button>
         `);
         actionButtons.push(`
-          <button type="button" class="btnIcon btnReject" style="width:auto; padding:8px 16px; border-radius:8px;" onclick="closeDetail(); tolakServiceModal('${req.noSurat}', 'SERVICE');">
-            <span class="material-symbols-rounded">cancel</span> REJECT SERVICE
+          <button type="button" class="btnIcon btnReject btnIconOnly" title="TOLAK" onclick="closeDetail(); tolakServiceModal('${req.noSurat}', 'SERVICE');">
+            <span class="material-symbols-rounded">cancel</span>
           </button>
         `);
-      } else if (req.status === 'APPROVE') {
+      } else if (isAdminUser) {
         actionButtons.push(`
-          <button type="button" class="btnIcon btnDone" style="width:auto; padding:8px 16px; border-radius:8px;" onclick="closeDetail(); doneService('${req.noSurat}');">
-            <span class="material-symbols-rounded">task_alt</span> SET DONE
-          </button>
-        `);
-      }
-    } else if (role === 'DM') {
-      if (req.status === 'PENDING' && req.serviceApprove) {
-        actionButtons.push(`
-          <button type="button" class="btnIcon btnApprove" style="width:auto; padding:8px 16px; border-radius:8px;" onclick="closeDetail(); approveDM('${req.noSurat}');">
-            <span class="material-symbols-rounded">check_circle</span> APPROVE DM
+          <button type="button" class="btnIcon btnApprove btnIconOnly" title="APPROVE" onclick="closeDetail(); approveDM('${req.noSurat}');">
+            <span class="material-symbols-rounded">check_circle</span>
           </button>
         `);
         actionButtons.push(`
-          <button type="button" class="btnIcon btnReject" style="width:auto; padding:8px 16px; border-radius:8px;" onclick="closeDetail(); tolakServiceModal('${req.noSurat}', 'DM');">
-            <span class="material-symbols-rounded">cancel</span> REJECT DM
+          <button type="button" class="btnIcon btnReject btnIconOnly" title="TOLAK" onclick="closeDetail(); tolakServiceModal('${req.noSurat}', 'DM');">
+            <span class="material-symbols-rounded">cancel</span>
           </button>
         `);
       }
     }
-
-    const isPhotoHidden = (req.status === 'APPROVE' || req.status === 'DONE' || req.status === 'REJECT');
-    if (req.photos && req.photos.length > 0 && !isPhotoHidden) {
+    
+    if (role === 'DM' && req.serviceApprove) {
       actionButtons.push(`
-        <button type="button" class="btnIcon btnView" style="width:auto; padding:8px 16px; border-radius:8px;" onclick="lihatFotoByNoSurat('${req.noSurat}');">
-          <span class="material-symbols-rounded">image</span> FOTO
-        </button>
-      `);
-    }
-
-    if (req.status === 'APPROVE') {
-      actionButtons.push(`
-        <button type="button" class="btnIcon btnPdf" style="width:auto; padding:8px 16px; border-radius:8px;" onclick="bukaPdfModal('${req.noSurat}');">
-          <span class="material-symbols-rounded">picture_as_pdf</span> CETAK PDF
-        </button>
-      `);
-    }
-
-    const isCreator = (req.userId === currentUser.id || req.createdBy === currentUser.fullName);
-    const canEditDelete = (!req.serviceApprove && req.status === 'PENDING') && (isCreator || currentUser.category === 'SERVICE');
-
-    if (canEditDelete) {
-      actionButtons.push(`
-        <button type="button" class="btnIcon btnEdit" style="width:auto; padding:8px 16px; border-radius:8px;" onclick="closeDetail(); editPermintaan('${req.noSurat}');">
-          <span class="material-symbols-rounded">edit</span> EDIT
+        <button type="button" class="btnIcon btnApprove btnIconOnly" title="APPROVE" onclick="closeDetail(); approveDM('${req.noSurat}');">
+          <span class="material-symbols-rounded">check_circle</span>
         </button>
       `);
       actionButtons.push(`
-        <button type="button" class="btnIcon btnDelete" style="width:auto; padding:8px 16px; border-radius:8px;" onclick="closeDetail(); hapusData('${req.noSurat}');">
-          <span class="material-symbols-rounded">delete</span> HAPUS
+        <button type="button" class="btnIcon btnReject btnIconOnly" title="TOLAK" onclick="closeDetail(); tolakServiceModal('${req.noSurat}', 'DM');">
+          <span class="material-symbols-rounded">cancel</span>
         </button>
       `);
     }
+  }
 
-    if (actionButtons.length > 0) {
-      bottomActionsHtml = `
-        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; border-top:1px solid var(--border-color); padding-top:14px; justify-content:center; align-items:center;">
-          ${actionButtons.join('')}
-        </div>
-      `;
-    }
-  } else {
-    const isCreator = (req.userId === currentUser.id || req.createdBy === currentUser.fullName);
-    const canEditDelete = (!req.serviceApprove && req.status === 'PENDING') && (isCreator || currentUser.category === 'SERVICE');
+  const isPdfVisible = (req.status === 'APPROVE' || req.status === 'DONE' || (isAdminUser && req.status !== 'REJECT'));
+  if (isPdfVisible) {
+    actionButtons.push(`
+      <button type="button" class="btnIcon btnPdf btnIconOnly" title="CETAK PDF" onclick="closeDetail(); bukaPdfModal('${req.noSurat}');">
+        <span class="material-symbols-rounded">picture_as_pdf</span>
+      </button>
+    `);
+  }
 
-    if (canEditDelete) {
-      bottomActionsHtml = `
-        <div style="display:flex; gap:12px; margin-top:16px; border-top:1px solid var(--border-color); padding-top:14px; justify-content:center; align-items:center;">
-          <button type="button" class="btnIcon btnEdit" style="width:auto; padding:8px 18px; border-radius:8px;" onclick="closeDetail(); editPermintaan('${req.noSurat}');">
-            <span class="material-symbols-rounded">edit</span> EDIT PERMINTAAN
-          </button>
-          <button type="button" class="btnIcon btnDelete" style="width:auto; padding:8px 18px; border-radius:8px;" onclick="closeDetail(); hapusData('${req.noSurat}');">
-            <span class="material-symbols-rounded">delete</span> HAPUS PERMINTAAN
-          </button>
-        </div>
-      `;
-    }
+  if (req.status === 'APPROVE' && (role === 'SERVICE' || isAdminUser)) {
+    actionButtons.push(`
+      <button type="button" class="btnIcon btnDone btnIconOnly" title="SET DONE" onclick="closeDetail(); doneService('${req.noSurat}');">
+        <span class="material-symbols-rounded">task_alt</span>
+      </button>
+    `);
+  }
+
+  const isCreator = currentUser && (req.userId === currentUser.id || req.createdBy === currentUser.fullName || (currentUser.category === 'TOKO' && req.toko.toUpperCase() === currentUser.fullName.toUpperCase()));
+  const canCreatorEditDelete = isCreator && !req.serviceApprove && req.status === 'PENDING';
+  const canServiceEditDelete = (role === 'SERVICE' && !req.serviceApprove && req.status === 'PENDING');
+  const canAdminEditDelete = isAdminUser;
+
+  if (canCreatorEditDelete || canServiceEditDelete || canAdminEditDelete) {
+    actionButtons.push(`
+      <button type="button" class="btnIcon btnEdit btnIconOnly" title="EDIT" onclick="closeDetail(); editPermintaan('${req.noSurat}');">
+        <span class="material-symbols-rounded">edit</span>
+      </button>
+    `);
+    actionButtons.push(`
+      <button type="button" class="btnIcon btnDelete btnIconOnly" title="HAPUS" onclick="closeDetail(); hapusData('${req.noSurat}');">
+        <span class="material-symbols-rounded">delete</span>
+      </button>
+    `);
+  }
+
+  if (actionButtons.length > 0) {
+    bottomActionsHtml = `
+      <div class="popupDetailActions" style="justify-content: flex-start !important; text-align: left !important; flex-wrap: wrap !important;">
+        ${actionButtons.join('')}
+      </div>
+    `;
   }
 
   msgBox.innerHTML = `
     ${headerInfoHtml}
-    <div class="popupTableScroll">
-      <table class="detailTable2">
-        <thead>
-          <tr>
-            <th style="width:45px; text-align:center;">NO</th>
-            <th>TYPE</th>
-            <th>SERI</th>
-            <th>PERMINTAAN</th>
-            ${isDus ? '<th>NO SN DUS</th>' : ''}
-            <th>ALASAN</th>
-            <th style="width:55px; text-align:center;">QTY</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemsHtml}
-        </tbody>
-      </table>
-    </div>
+    <table class="detailTable2">
+      <thead>
+        <tr>
+          <th style="width:45px; text-align:center;">NO</th>
+          <th>TYPE</th>
+          <th>SERI</th>
+          <th>PERMINTAAN</th>
+          ${isDus ? '<th>NO SN DUS</th>' : ''}
+          <th>ALASAN</th>
+          <th style="width:55px; text-align:center;">QTY</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsHtml}
+      </tbody>
+    </table>
     ${bottomActionsHtml}
   `;
 
-  document.getElementById('popupDetail').style.display = 'flex';
+  const popupDetail = document.getElementById('popupDetail');
+  if (popupDetail) popupDetail.style.display = 'flex';
+
+  const notifBtn = document.getElementById('notifBellBtn');
+  const helpBtn = document.getElementById('helpButton');
+  if (notifBtn) notifBtn.style.setProperty('display', 'flex', 'important');
+  if (helpBtn) helpBtn.style.setProperty('display', 'flex', 'important');
 }
 
 function closeDetail() {
-  document.getElementById('popupDetail').style.display = 'none';
+  const detailModal = document.getElementById('popupDetail');
+  if (detailModal) {
+    detailModal.style.display = 'none';
+    detailModal.classList.remove('show');
+  }
+
+  setTimeout(() => {
+    const notifBtn = document.getElementById('notifBellBtn');
+    const helpBtn = document.getElementById('helpButton');
+    const dashboardPage = document.getElementById('dashboardPage');
+    
+    if (dashboardPage && dashboardPage.classList.contains('active')) {
+      if (notifBtn) notifBtn.style.setProperty('display', 'flex', 'important');
+      if (helpBtn) helpBtn.style.setProperty('display', 'flex', 'important');
+    }
+  }, 100);
 }
 
-// PDF DOCUMENT GENERATOR & PRINT
+const PDF_MODEL_KEY = 'SELECTED_PDF_MODEL';
+let currentlyPreviewedModel = 'MODEL_1';
+
+const PDF_MODELS_DATA = [
+  { id: 'MODEL_1', title: 'MODE 1: STANDAR KLASIK', desc: 'Resmi, formal dengan underline header hitam & header tabel biru klasik.', color: '#0284c7' },
+  { id: 'MODEL_2', title: 'MODE 2: MODERN MINIMALIS', desc: 'Header banner biru melengkung modern, tabel slate soft & badge terpadu.', color: '#0284c7' },
+  { id: 'MODEL_3', title: 'MODE 3: ELEGANT CORPORATE', desc: 'Header navy gelap berbingkai aksen emas gold & font korporat elegan.', color: '#0f172a' },
+  { id: 'MODEL_4', title: 'MODE 4: COMPACT GRID BOX', desc: 'Struktur grid hijau emerald bersih dengan border terstruktur presisi.', color: '#059669' },
+  { id: 'MODEL_5', title: 'MODE 5: LUXURY GRADIENT BRAND', desc: 'Banner violet/purple gradient mewah dengan aksen badge rounded.', color: '#7c3aed' }
+];
+
+function getActivePdfModel() {
+  return appStorage.getItem(PDF_MODEL_KEY) || 'MODEL_1';
+}
+
+function updateActivePdfModelBadge() {
+  const badge = document.getElementById('activePdfModelBadge');
+  if (!badge) return;
+  const activeId = getActivePdfModel();
+  const modelObj = PDF_MODELS_DATA.find(m => m.id === activeId) || PDF_MODELS_DATA[0];
+  badge.textContent = `${modelObj.title.toUpperCase()}`;
+}
+
+function bukaModalPdfModels() {
+  currentlyPreviewedModel = getActivePdfModel();
+  renderFullPdfPreviewDocument(currentlyPreviewedModel);
+  updatePdfModelSelectorButtons();
+  const modal = document.getElementById('popupPdfModelsModal');
+  if (modal) modal.style.display = 'flex';
+  pushPopupHistoryState();
+}
+
+function tutupModalPdfModels() {
+  const modal = document.getElementById('popupPdfModelsModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function switchPdfPreviewModel(modelId) {
+  currentlyPreviewedModel = modelId;
+  renderFullPdfPreviewDocument(currentlyPreviewedModel);
+  updatePdfModelSelectorButtons();
+}
+
+function konfirmasiGunakanModelPdf() {
+  appStorage.setItem(PDF_MODEL_KEY, currentlyPreviewedModel);
+  updateActivePdfModelBadge();
+  showNotif(`BERHASIL MENYIMPAN & MENGAKTIFKAN TEMPLATE PDF ${currentlyPreviewedModel.replace('_', ' ')}!`, 'success');
+  tutupModalPdfModels();
+}
+
+function updatePdfModelSelectorButtons() {
+  const containerNav = document.getElementById('pdfModelSelectorNav');
+  const descBanner = document.getElementById('pdfModelDescBanner');
+
+  const activeModelObj = PDF_MODELS_DATA.find(m => m.id === currentlyPreviewedModel) || PDF_MODELS_DATA[0];
+
+  if (descBanner) {
+    descBanner.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <div style="font-weight:900; font-size:12.5px; color:var(--text-main); text-transform:uppercase; display:flex; align-items:center; gap:6px;">
+          <span class="material-symbols-rounded" style="color:${activeModelObj.color}; font-size:18px;">style</span>
+          ${activeModelObj.title}
+        </div>
+        <div style="font-size:11.5px; color:var(--text-muted); font-weight:600;">${activeModelObj.desc}</div>
+      </div>
+    `;
+  }
+
+  if (!containerNav) return;
+  containerNav.innerHTML = '';
+
+  PDF_MODELS_DATA.forEach(m => {
+    const isActive = (m.id === currentlyPreviewedModel);
+    const num = m.id.replace('MODEL_', '');
+    
+    let btnBg = 'var(--bg-box)';
+    if (isActive) {
+      btnBg = (m.color === '#0f172a' ? '#0f172a' : (m.color || '#7c3aed'));
+    }
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `btnPdfNumSimple ${isActive ? 'active' : ''}`;
+    btn.style.background = btnBg;
+    if (isActive) {
+      btn.style.color = '#ffffff';
+    }
+
+    btn.onclick = () => switchPdfPreviewModel(m.id);
+    btn.innerHTML = `${num}`;
+    btn.title = m.title;
+    containerNav.appendChild(btn);
+  });
+}
+
+function renderFullPdfPreviewDocument(modelId) {
+  const container = document.getElementById('pdfModelFullPreviewArea');
+  if (!container) return;
+
+  const m = PDF_MODELS_DATA.find(x => x.id === modelId) || PDF_MODELS_DATA[0];
+
+  let tableHeaderBg = '#0284c7';
+  let headerTitleHtml = `
+    <div style="text-align: center; font-size: 20px; font-weight: 800; border-bottom: 2.5px solid #0f172a; padding-bottom: 6px; margin-bottom: 14px; letter-spacing: 0.5px; color: #0f172a; text-transform: uppercase;">
+      PERMINTAAN TOKO
+    </div>
+  `;
+
+  if (modelId === 'MODEL_2') {
+    tableHeaderBg = '#334155';
+    headerTitleHtml = `
+      <div style="background: linear-gradient(135deg, #0284c7, #0369a1); color: #ffffff; padding: 12px 18px; border-radius: 10px; text-align: center; font-size: 20px; font-weight: 900; margin-bottom: 14px; letter-spacing: 1px; box-shadow: 0 4px 12px rgba(2,132,199,0.25);">
+        PERMINTAAN TOKO
+      </div>
+    `;
+  } else if (modelId === 'MODEL_3') {
+    tableHeaderBg = '#0f172a';
+    headerTitleHtml = `
+      <div style="background: #0f172a; color: #fbbf24; padding: 14px 18px; border-radius: 8px; border-bottom: 4px solid #fbbf24; text-align: center; font-size: 21px; font-weight: 900; margin-bottom: 14px; letter-spacing: 1.5px; text-transform: uppercase;">
+        PERMINTAAN TOKO
+      </div>
+    `;
+  } else if (modelId === 'MODEL_4') {
+    tableHeaderBg = '#059669';
+    headerTitleHtml = `
+      <div style="background: #059669; color: #ffffff; padding: 12px 18px; border-radius: 6px; text-align: center; font-size: 20px; font-weight: 900; margin-bottom: 14px; letter-spacing: 1px; border-left: 6px solid #047857;">
+        PERMINTAAN TOKO
+      </div>
+    `;
+  } else if (modelId === 'MODEL_5') {
+    tableHeaderBg = '#7c3aed';
+    headerTitleHtml = `
+      <div style="background: linear-gradient(135deg, #7c3aed, #4c1d95); color: #ffffff; padding: 14px 18px; border-radius: 12px; text-align: center; font-size: 21px; font-weight: 900; margin-bottom: 14px; letter-spacing: 1.5px; box-shadow: 0 6px 18px rgba(124,58,237,0.3);">
+        PERMINTAAN TOKO
+      </div>
+    `;
+  }
+
+  container.innerHTML = `
+    <div style="background: #ffffff; color: #0f172a; width: 100%; max-width: 720px; margin: 0 auto; padding: 20px 24px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.18); font-family: Arial, sans-serif; box-sizing: border-box; border: 1px solid #cbd5e1;">
+      ${headerTitleHtml}
+
+      <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 10px; padding: 2px 0; flex-wrap: wrap; gap: 6px; background: transparent; border: none;">
+        <div><b>NO SURAT:</b> <span style="color:${m.color}; font-weight:800;">PRM/2026/001</span></div>
+        <div><b>TOKO:</b> TOKO UTAMA BANDUNG</div>
+        <div><b>TANGGAL:</b> 01/08/2026</div>
+        <div><b>JENIS:</b> UNIT</div>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 10px; border: 1px solid #cbd5e1;">
+        <thead>
+          <tr style="background: ${tableHeaderBg}; color: #ffffff;">
+            <th style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center;">NO</th>
+            <th style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: left;">TIPE BARANG</th>
+            <th style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: left;">NO. SERI</th>
+            <th style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: left;">NAMA BARANG</th>
+            <th style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: left;">ALASAN</th>
+            <th style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center;">QTY</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="text-align:center; padding:6px 8px; border-bottom:1px solid #e2e8f0;">1</td>
+            <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">AC DAIKIN 2 PK</td>
+            <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">SN-889920112</td>
+            <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">UNIT INDOOR AC 2PK</td>
+            <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">KOMPRESOR BOCOR FREON</td>
+            <td style="text-align:center; padding:6px 8px; border-bottom:1px solid #e2e8f0; font-weight:bold;">1</td>
+          </tr>
+          <tr>
+            <td style="text-align:center; padding:6px 8px; border-bottom:1px solid #e2e8f0;">2</td>
+            <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">KULKAS 2 PINTU</td>
+            <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">SN-776655100</td>
+            <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">UNIT KULKAS INVERTER</td>
+            <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">KARET PINTU LONGGAR</td>
+            <td style="text-align:center; padding:6px 8px; border-bottom:1px solid #e2e8f0; font-weight:bold;">1</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top: 8px; margin-bottom: 12px; font-size: 11px; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 1.5px solid #0284c7; border-left: 5px solid ${tableHeaderBg}; padding: 8px 12px; border-radius: 6px; color: #0f172a;">
+        <div style="font-weight: 800; font-size: 11px; color: ${tableHeaderBg === '#0f172a' ? '#0369a1' : tableHeaderBg}; margin-bottom: 2px; display: flex; align-items: center; gap: 4px;">
+          <span>📌</span> CATATAN / KETERANGAN PERMINTAAN:
+        </div>
+        <div style="font-weight: 600; color: #0f172a; font-size: 11px;">MOHON DIPROSES SECEPATNYA UNTUK KEPERLUAN DISPLAY TOKO UTAMA.</div>
+      </div>
+
+      <div style="display: flex; justify-content: space-around; font-size: 10.5px; text-align: center; margin-top: 14px;">
+        <div style="width: 30%; display: flex; flex-direction: column; justify-content: space-between; height: 95px;">
+          <div style="font-weight: 800; color: #0f172a; text-transform: uppercase;">PEMOHON</div>
+          <div style="height: 35px;"></div>
+          <div>
+            <div style="font-weight: 800; color: #0f172a; font-size: 11px;">TOKO UTAMA</div>
+            <div style="font-size: 9.5px; color: #475569; margin-top: 1px; text-transform: uppercase;">PEMOHON (TOKO)</div>
+          </div>
+        </div>
+
+        <div style="width: 30%; display: flex; flex-direction: column; justify-content: space-between; height: 95px;">
+          <div style="font-weight: 800; color: #0f172a; text-transform: uppercase;">DIPERIKSA</div>
+          <div style="height: 35px;"></div>
+          <div>
+            <div style="font-weight: 800; color: #0f172a; font-size: 11px;">SERVICE BANDUNG</div>
+            <div style="font-size: 9.5px; color: #475569; margin-top: 1px; text-transform: uppercase;">HODS BANDUNG</div>
+          </div>
+        </div>
+
+        <div style="width: 30%; display: flex; flex-direction: column; justify-content: space-between; height: 95px;">
+          <div style="font-weight: 800; color: #0f172a; text-transform: uppercase;">DISETUJUI</div>
+          <div style="height: 35px;"></div>
+          <div>
+            <div style="font-weight: 800; color: #0f172a; font-size: 11px;">FERRY EDIYANTO</div>
+            <div style="font-size: 9.5px; color: #475569; margin-top: 1px; text-transform: uppercase;">DISTRICT MANAGER</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function bukaPdfModal(noSurat) {
   const requests = getRequestsFromDB();
   const req = requests.find(r => r.noSurat === noSurat);
@@ -2267,26 +3747,41 @@ function bukaPdfModal(noSurat) {
   const pdfContainer = document.getElementById('pdfDocumentContent');
   if (!pdfContainer) return;
 
+  const activeModel = getActivePdfModel();
+
   let itemRowsHtml = req.items.map((i, idx) => `
     <tr>
-      <td style="text-align:center; padding:6px 8px; border:1px solid #cbd5e1;">${idx + 1}</td>
-      <td style="padding:6px 8px; border:1px solid #cbd5e1;">${i.type}</td>
-      <td style="padding:6px 8px; border:1px solid #cbd5e1;">${i.seri}</td>
-      ${req.jenis === 'DUS' ? `<td style="padding:6px 8px; border:1px solid #cbd5e1; color:#d97706;">${i.dus || '-'}</td>` : ''}
-      <td style="padding:6px 8px; border:1px solid #cbd5e1;">${i.barang}</td>
-      <td style="padding:6px 8px; border:1px solid #cbd5e1;">${i.alasan}</td>
-      <td style="text-align:center; padding:6px 8px; border:1px solid #cbd5e1;">${i.qty}</td>
+      <td style="text-align:center; padding:6px 8px; border-bottom:1px solid #e2e8f0;">${idx + 1}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">${i.type}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">${i.seri}</td>
+      ${req.jenis === 'DUS' ? `<td style="padding:6px 8px; border-bottom:1px solid #e2e8f0; color:#d97706;">${i.dus || '-'}</td>` : ''}
+      <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">${i.barang}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">${i.alasan}</td>
+      <td style="text-align:center; padding:6px 8px; border-bottom:1px solid #e2e8f0;">${i.qty}</td>
     </tr>
   `).join('');
 
   const users = getUsersFromDB();
-  const serviceUser = users.find(u => u.category === 'SERVICE' && u.area === req.area);
-  const serviceName = serviceUser ? serviceUser.fullName : (req.createdBy || 'HODS AREA');
+  const serviceUser = users.find(u => u.category === 'SERVICE' && u.area === req.area) || users.find(u => u.category === 'SERVICE');
+  const dmUser = users.find(u => u.category === 'DM') || users.find(u => u.username === 'ADMIN');
+  const serviceName = req.serviceUserName || (serviceUser ? serviceUser.fullName : 'SERVICE SUPERVISOR');
 
-  const ttdMap = JSON.parse(localStorage.getItem(TTD_DB_KEY) || '{}');
-  const userTTD = ttdMap[req.createdBy] || '';
-  const serviceTTD = (serviceUser && ttdMap[serviceUser.fullName]) || ttdMap['SERVICE_' + req.area] || ttdMap['SERVICE'] || '';
-  const dmTTD = ttdMap['DM'] || '';
+  const ttdMap = JSON.parse(appStorage.getItem(TTD_DB_KEY) || '{}');
+  let serviceTTD = req.serviceTTD || '';
+  if (!serviceTTD && serviceUser) {
+    serviceTTD = ttdMap[serviceUser.id] || ttdMap[serviceUser.username] || ttdMap[serviceUser.fullName] || '';
+  }
+  if (!serviceTTD) {
+    serviceTTD = ttdMap['SERVICE_' + req.area] || ttdMap['SERVICE'] || ttdMap['HODS'] || '';
+  }
+
+  let dmTTD = req.dmTTD || '';
+  if (!dmTTD && dmUser) {
+    dmTTD = ttdMap[dmUser.id] || ttdMap[dmUser.username] || ttdMap[dmUser.fullName] || '';
+  }
+  if (!dmTTD) {
+    dmTTD = ttdMap['DM'] || ttdMap['DM'] || '';
+  }
 
   const nowPrint = new Date();
   const pDay = String(nowPrint.getDate()).padStart(2, '0');
@@ -2295,7 +3790,7 @@ function bukaPdfModal(noSurat) {
   const pHour = String(nowPrint.getHours()).padStart(2, '0');
   const pMin = String(nowPrint.getMinutes()).padStart(2, '0');
   const pSec = String(nowPrint.getSeconds()).padStart(2, '0');
-  const timestampStr = `DI CETAK PADA ${pDay}/${pMonth}/${pYear} Pukul ${pHour}:${pMin}:${pSec}`;
+  const timestampStr = `DICETAK PADA ${pDay}/${pMonth}/${pYear} Pukul ${pHour}:${pMin}:${pSec}`;
 
   let photoSection = '';
   if (req.photos && req.photos.length > 0) {
@@ -2323,94 +3818,135 @@ function bukaPdfModal(noSurat) {
   };
   const hodsAreaTitle = `HODS ${areaNameMap[req.area] || req.area}`;
 
+  let tableHeaderBg = '#0284c7';
+  let headerTitleHtml = `
+    <div style="text-align: center; font-size: 20px; font-weight: 800; border-bottom: 2.5px solid #0f172a; padding-bottom: 6px; margin-bottom: 14px; letter-spacing: 0.5px; color: #0f172a; text-transform: uppercase;">
+      PERMINTAAN TOKO
+    </div>
+  `;
+
+  if (activeModel === 'MODEL_2') {
+    tableHeaderBg = '#334155';
+    headerTitleHtml = `
+      <div style="background: linear-gradient(135deg, #0284c7, #0369a1); color: #ffffff; padding: 12px 18px; border-radius: 10px; text-align: center; font-size: 20px; font-weight: 900; margin-bottom: 14px; letter-spacing: 1px; box-shadow: 0 4px 12px rgba(2,132,199,0.25);">
+        PERMINTAAN TOKO
+      </div>
+    `;
+  } else if (activeModel === 'MODEL_3') {
+    tableHeaderBg = '#0f172a';
+    headerTitleHtml = `
+      <div style="background: #0f172a; color: #fbbf24; padding: 14px 18px; border-radius: 8px; border-bottom: 4px solid #fbbf24; text-align: center; font-size: 21px; font-weight: 900; margin-bottom: 14px; letter-spacing: 1.5px; text-transform: uppercase;">
+        PERMINTAAN TOKO
+      </div>
+    `;
+  } else if (activeModel === 'MODEL_4') {
+    tableHeaderBg = '#059669';
+    headerTitleHtml = `
+      <div style="background: #059669; color: #ffffff; padding: 12px 18px; border-radius: 6px; text-align: center; font-size: 20px; font-weight: 900; margin-bottom: 14px; letter-spacing: 1px; border-left: 6px solid #047857;">
+        PERMINTAAN TOKO
+      </div>
+    `;
+  } else if (activeModel === 'MODEL_5') {
+    tableHeaderBg = '#7c3aed';
+    headerTitleHtml = `
+      <div style="background: linear-gradient(135deg, #7c3aed, #4c1d95); color: #ffffff; padding: 14px 18px; border-radius: 12px; text-align: center; font-size: 21px; font-weight: 900; margin-bottom: 14px; letter-spacing: 1.5px; box-shadow: 0 6px 18px rgba(124,58,237,0.3);">
+        PERMINTAAN TOKO
+      </div>
+    `;
+  }
+
   pdfContainer.innerHTML = `
     <div class="pdf-paper" style="min-height: 680px; display: flex; flex-direction: column; justify-content: space-between; padding: 22px; color: #0f172a; background: #ffffff; font-family: 'Poppins', sans-serif; box-sizing: border-box;">
       <div>
-        <!-- HEADER DOCUMENT -->
-        <div style="text-align: center; font-size: 20px; font-weight: 800; border-bottom: 2.5px solid #0f172a; padding-bottom: 6px; margin-bottom: 14px; letter-spacing: 0.5px; color: #0f172a; text-transform: uppercase;">
-          PERMINTAAN TOKO
-        </div>
+        ${headerTitleHtml}
 
-        <!-- 4 KETERANGAN UTAMA (NO SURAT, TOKO, TANGGAL, JENIS) -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 12px; border: 1px solid #cbd5e1; background: #f8fafc;">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 12px; background: transparent; border: none;">
           <tr>
-            <td style="padding: 7px 10px; width: 14%; font-weight: bold; border-bottom: 1px solid #e2e8f0;">NO SURAT</td>
-            <td style="padding: 7px 4px; width: 2%; border-bottom: 1px solid #e2e8f0;">:</td>
-            <td style="padding: 7px 10px; width: 34%; font-weight: 700; color: #0284c7; border-bottom: 1px solid #e2e8f0;">${req.noSurat}</td>
-            <td style="padding: 7px 10px; width: 14%; font-weight: bold; border-bottom: 1px solid #e2e8f0;">TANGGAL</td>
-            <td style="padding: 7px 4px; width: 2%; border-bottom: 1px solid #e2e8f0;">:</td>
-            <td style="padding: 7px 10px; width: 34%; font-weight: 600; border-bottom: 1px solid #e2e8f0;">${req.tanggal}</td>
+            <td style="padding: 4px 0; width: 14%; font-weight: bold; border: none;">NO SURAT</td>
+            <td style="padding: 4px 0; width: 2%; border: none;">:</td>
+            <td style="padding: 4px 0; width: 34%; font-weight: 700; color: #0284c7; border: none;">${req.noSurat}</td>
+            <td style="padding: 4px 0; width: 14%; font-weight: bold; border: none;">TANGGAL</td>
+            <td style="padding: 4px 0; width: 2%; border: none;">:</td>
+            <td style="padding: 4px 0; width: 34%; font-weight: 600; border: none;">${formatDateDDMMYYYYString(req.tanggal)}</td>
           </tr>
           <tr>
-            <td style="padding: 7px 10px; font-weight: bold;">TOKO</td>
-            <td style="padding: 7px 4px;">:</td>
-            <td style="padding: 7px 10px; font-weight: 700;">${req.toko}</td>
-            <td style="padding: 7px 10px; font-weight: bold;">JENIS</td>
-            <td style="padding: 7px 4px;">:</td>
-            <td style="padding: 7px 10px; font-weight: 700; color: #16a34a;">${req.jenis}</td>
+            <td style="padding: 4px 0; font-weight: bold; border: none;">TOKO</td>
+            <td style="padding: 4px 0; border: none;">:</td>
+            <td style="padding: 4px 0; font-weight: 700; border: none;">${req.toko}</td>
+            <td style="padding: 4px 0; font-weight: bold; border: none;">JENIS</td>
+            <td style="padding: 4px 0; border: none;">:</td>
+            <td style="padding: 4px 0; font-weight: 700; color: #16a34a; border: none;">${req.jenis || 'DEFAULT'}</td>
           </tr>
         </table>
 
-        <!-- DETAIL PERMINTAAN TABLE -->
         <div style="font-size: 11px; font-weight: bold; margin-bottom: 6px; color: #0f172a;">DETAIL PERMINTAAN:</div>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11.5px; border: 1px solid #cbd5e1;">
           <thead>
-            <tr style="background: #0284c7; color: #ffffff;">
-              <th style="width: 32px; text-align:center; padding:6px 8px; border:1px solid #0284c7;">NO</th>
-              <th style="padding:6px 8px; border:1px solid #0284c7;">TIPE BARANG</th>
-              <th style="padding:6px 8px; border:1px solid #0284c7;">NO. SERI</th>
-              ${req.jenis === 'DUS' ? '<th style="padding:6px 8px; border:1px solid #0284c7;">NO. SERI DUS</th>' : ''}
-              <th style="padding:6px 8px; border:1px solid #0284c7;">PERMINTAAN BARANG</th>
-              <th style="padding:6px 8px; border:1px solid #0284c7;">ALASAN PERMINTAAN</th>
-              <th style="width: 45px; text-align:center; padding:6px 8px; border:1px solid #0284c7;">QTY</th>
+            <tr style="background: ${tableHeaderBg}; color: #ffffff;">
+              <th style="width: 32px; text-align:center; padding:6px 8px; border:1px solid #cbd5e1;">NO</th>
+              <th style="padding:6px 8px; border:1px solid #cbd5e1;">TIPE BARANG</th>
+              <th style="padding:6px 8px; border:1px solid #cbd5e1;">NO. SERI</th>
+              ${req.jenis === 'DUS' ? `<th style="padding:6px 8px; border:1px solid #cbd5e1;">NO. SERI DUS</th>` : ''}
+              <th style="padding:6px 8px; border:1px solid #cbd5e1;">PERMINTAAN BARANG</th>
+              <th style="padding:6px 8px; border:1px solid #cbd5e1;">ALASAN PERMINTAAN</th>
+              <th style="width: 45px; text-align:center; padding:6px 8px; border:1px solid #cbd5e1;">QTY</th>
             </tr>
           </thead>
           <tbody>${itemRowsHtml}</tbody>
         </table>
 
-        <!-- FOTO BARANG PENDUKUNG (SAMA KOTAKNYA JIKA ADA FOTO) -->
         ${photoSection}
 
-        <!-- CATATAN -->
-        <div style="margin-top: 8px; margin-bottom: 16px; font-size: 11.5px; background: #ffffff; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 4px;">
-          <strong>CATATAN:</strong> ${req.catatan || 'STOK TOKO'}
-        </div>
+        ${(() => {
+          const cTxt = (req.catatan || '').trim();
+          if (cTxt && cTxt !== '-') {
+            return `
+              <div style="margin-top: 12px; margin-bottom: 16px; font-size: 11.5px; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 1.5px solid #0284c7; border-left: 6px solid ${tableHeaderBg}; padding: 12px 16px; border-radius: 8px; box-shadow: 0 3px 10px rgba(2,132,199,0.12); color: #0f172a; opacity: 1 !important;">
+                <div style="font-weight: 800; font-size: 11.5px; color: ${tableHeaderBg === '#0f172a' ? '#0369a1' : tableHeaderBg}; margin-bottom: 4px; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 14px;">📌</span> CATATAN / KETERANGAN PERMINTAAN:
+                </div>
+                <div style="font-weight: 600; color: #0f172a; line-height: 1.5; font-size: 11.5px; word-break: break-word;">${cTxt}</div>
+              </div>
+            `;
+          }
+          return '';
+        })()}
       </div>
 
       <div>
-        <!-- TTD 3 KOLOM SEJAJAR: KIRI = PEMOHON (SELALU KOSONG), TENGAH = DIPERIKSA, KANAN = DISETUJUI -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 24px; text-align: center; font-size: 11px;">
-          <!-- KIRI: PEMOHON (LANGSUNG TERISI NAMA TOKO) -->
-          <div style="width: 30%; display: flex; flex-direction: column; justify-content: space-between; height: 120px;">
-            <div style="font-weight: bold;">PEMOHON</div>
-            <div style="height: 50px;"></div>
-            <div style="border-top: 1px solid #000; padding-top: 4px;">
-              <div style="font-weight: bold;">${req.toko}</div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-top: 28px; text-align: center; font-size: 11px;">
+          <div style="width: 30%; display: flex; flex-direction: column; justify-content: space-between; height: 125px;">
+            <div style="font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px;">PEMOHON</div>
+            <div style="height: 55px;"></div>
+            <div>
+              <div style="font-weight: 800; color: #0f172a; font-size: 11.5px;">${req.toko}</div>
+              <div style="font-size: 10px; color: #475569; margin-top: 2px; text-transform: uppercase;">PEMOHON (TOKO)</div>
             </div>
           </div>
 
-          <!-- TENGAH: DIPERIKSA (SERVICE SUPERVISOR AREA) -->
-          <div style="width: 30%; display: flex; flex-direction: column; justify-content: space-between; height: 120px;">
-            <div style="font-weight: bold;">DIPERIKSA</div>
-            <div style="height: 50px; display: flex; align-items: center; justify-content: center;">${serviceTTD ? `<img src="${serviceTTD}" style="height: 48px; max-width: 100%; object-fit: contain;">` : ''}</div>
-            <div style="border-top: 1px solid #000; padding-top: 4px;">
-              <div style="font-weight: bold;">${serviceName}</div>
-              <div style="font-size: 10px; color: #475569; margin-top: 2px;">${hodsAreaTitle}</div>
+          <div style="width: 30%; display: flex; flex-direction: column; justify-content: space-between; height: 125px;">
+            <div style="font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px;">DIPERIKSA</div>
+            <div style="height: 55px; display: flex; align-items: center; justify-content: center;">
+              ${serviceTTD ? `<img src="${serviceTTD}" style="max-height: 52px; max-width: 100%; object-fit: contain;">` : ''}
+            </div>
+            <div>
+              <div style="font-weight: 800; color: #0f172a; font-size: 11.5px;">${serviceName}</div>
+              <div style="font-size: 10px; color: #475569; margin-top: 2px; text-transform: uppercase;">${hodsAreaTitle}</div>
             </div>
           </div>
 
-          <!-- KANAN: DISETUJUI (FERRY EDIYANTO - DISTRICT MANAGER) -->
-          <div style="width: 30%; display: flex; flex-direction: column; justify-content: space-between; height: 120px;">
-            <div style="font-weight: bold;">DISETUJUI</div>
-            <div style="height: 50px; display: flex; align-items: center; justify-content: center;">${dmTTD ? `<img src="${dmTTD}" style="height: 48px; max-width: 100%; object-fit: contain;">` : ''}</div>
-            <div style="border-top: 1px solid #000; padding-top: 4px;">
-              <div style="font-weight: bold;">FERRY EDIYANTO</div>
-              <div style="font-size: 10px; color: #475569; margin-top: 2px;">DISTRICT MANAGER</div>
+          <div style="width: 30%; display: flex; flex-direction: column; justify-content: space-between; height: 125px;">
+            <div style="font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px;">DISETUJUI</div>
+            <div style="height: 55px; display: flex; align-items: center; justify-content: center;">
+              ${dmTTD ? `<img src="${dmTTD}" style="max-height: 52px; max-width: 100%; object-fit: contain;">` : ''}
+            </div>
+            <div>
+              <div style="font-weight: 800; color: #0f172a; font-size: 11.5px;">FERRY EDIYANTO</div>
+              <div style="font-size: 10px; color: #475569; margin-top: 2px; text-transform: uppercase;">DISTRICT MANAGER</div>
             </div>
           </div>
         </div>
 
-        <!-- PRINT TIMESTAMP AT BOTTOM RIGHT (SMALLER FONT & FARTHER SPACING FROM TTD) -->
         <div style="margin-top: 36px; text-align: right; font-size: 8px; font-style: italic; color: #64748b; opacity: 0.85; letter-spacing: 0.2px;">
           ${timestampStr}
         </div>
@@ -2418,24 +3954,30 @@ function bukaPdfModal(noSurat) {
     </div>
   `;
 
-  document.getElementById('pdfModal').style.display = 'flex';
+  const pdfModal = document.getElementById('pdfModal');
+  if (pdfModal) pdfModal.style.display = 'flex';
 }
 
 function tutupPdfModal() {
-  document.getElementById('pdfModal').style.display = 'none';
+  const pdfModal = document.getElementById('pdfModal');
+  if (pdfModal) pdfModal.style.display = 'none';
 }
 
 function cetakDokumenPdf() {
   window.print();
 }
 
-// DIGITAL SIGNATURE (TTD) CANVAS ENGINE
 function bukaTTD() {
-  if (currentUser.category !== 'SERVICE' && currentUser.category !== 'DM') {
+  if (!currentUser || (currentUser.category !== 'SERVICE' && currentUser.category !== 'DM')) {
     showNotif('TANDA TANGAN DIGITAL KHUSUS UNTUK SERVICE & DM!', 'warning');
     return;
   }
-  document.getElementById('popupTTD').classList.add('show');
+  const modal = document.getElementById('popupTTD');
+  if (modal) {
+    modal.classList.add('show');
+    modal.style.display = 'flex';
+  }
+  pushPopupHistoryState();
   setTimeout(() => {
     initCanvasTTD();
     loadTTD();
@@ -2443,14 +3985,22 @@ function bukaTTD() {
 }
 
 function tutupTTD() {
-  document.getElementById('popupTTD').classList.remove('show');
+  const modalTTD = document.getElementById('popupTTD');
+  if (modalTTD) {
+    modalTTD.classList.remove('show');
+    modalTTD.style.display = 'none';
+  }
 }
 
 function initCanvasTTD() {
   canvasTTD = document.getElementById('canvasTTD');
   if (!canvasTTD) return;
-  ctxTTD = canvasTTD.getContext('2d');
 
+  const rect = canvasTTD.getBoundingClientRect();
+  canvasTTD.width = rect.width || canvasTTD.offsetWidth || 540;
+  canvasTTD.height = rect.height || canvasTTD.offsetHeight || 220;
+
+  ctxTTD = canvasTTD.getContext('2d');
   ctxTTD.lineWidth = 2.8;
   ctxTTD.lineCap = 'round';
   ctxTTD.lineJoin = 'round';
@@ -2458,28 +4008,57 @@ function initCanvasTTD() {
 
   ctxTTD.clearRect(0, 0, canvasTTD.width, canvasTTD.height);
 
+  canvasTTD.onmousedown = null;
+  canvasTTD.onmousemove = null;
+  canvasTTD.onmouseup = null;
+  canvasTTD.onmouseleave = null;
+
   canvasTTD.onmousedown = startDraw;
   canvasTTD.onmousemove = draw;
   canvasTTD.onmouseup = stopDraw;
   canvasTTD.onmouseleave = stopDraw;
 
-  canvasTTD.ontouchstart = startDrawTouch;
-  canvasTTD.ontouchmove = drawTouch;
-  canvasTTD.ontouchend = stopDraw;
+  canvasTTD.addEventListener('touchstart', startDrawTouch, { passive: false });
+  canvasTTD.addEventListener('touchmove', drawTouch, { passive: false });
+  canvasTTD.addEventListener('touchend', stopDraw);
 }
 
-function startDraw(e) {
+function getCanvasPointFromEvent(e) {
+  if (!canvasTTD) return { x: 0, y: 0 };
+
+  const rect = canvasTTD.getBoundingClientRect();
+  let clientX, clientY;
+
+  if (e.touches && e.touches.length > 0) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  }
+
+  return {
+    x: clientX - rect.left,
+    y: clientY - rect.top
+  };
+}
+
+function startDrawTouch(e) {
+  if (e.cancelable) e.preventDefault();
   isDrawing = true;
-  lastX = e.offsetX;
-  lastY = e.offsetY;
+  const point = getCanvasPointFromEvent(e);
+  lastX = point.x;
+  lastY = point.y;
   ctxTTD.beginPath();
   ctxTTD.moveTo(lastX, lastY);
 }
 
-function draw(e) {
+function drawTouch(e) {
+  if (e.cancelable) e.preventDefault();
   if (!isDrawing) return;
-  const x = e.offsetX;
-  const y = e.offsetY;
+  const point = getCanvasPointFromEvent(e);
+  const x = point.x;
+  const y = point.y;
   const mx = (lastX + x) / 2;
   const my = (lastY + y) / 2;
   ctxTTD.quadraticCurveTo(lastX, lastY, mx, my);
@@ -2488,22 +4067,20 @@ function draw(e) {
   lastY = y;
 }
 
-function startDrawTouch(e) {
-  e.preventDefault();
-  const rect = canvasTTD.getBoundingClientRect();
-  lastX = e.touches[0].clientX - rect.left;
-  lastY = e.touches[0].clientY - rect.top;
+function startDraw(e) {
   isDrawing = true;
+  const point = getCanvasPointFromEvent(e);
+  lastX = point.x;
+  lastY = point.y;
   ctxTTD.beginPath();
   ctxTTD.moveTo(lastX, lastY);
 }
 
-function drawTouch(e) {
-  e.preventDefault();
+function draw(e) {
   if (!isDrawing) return;
-  const rect = canvasTTD.getBoundingClientRect();
-  const x = e.touches[0].clientX - rect.left;
-  const y = e.touches[0].clientY - rect.top;
+  const point = getCanvasPointFromEvent(e);
+  const x = point.x;
+  const y = point.y;
   const mx = (lastX + x) / 2;
   const my = (lastY + y) / 2;
   ctxTTD.quadraticCurveTo(lastX, lastY, mx, my);
@@ -2515,27 +4092,70 @@ function drawTouch(e) {
 function stopDraw() { isDrawing = false; }
 
 function hapusTTD() {
-  if (ctxTTD) ctxTTD.clearRect(0, 0, canvasTTD.width, canvasTTD.height);
+  if (ctxTTD && canvasTTD) ctxTTD.clearRect(0, 0, canvasTTD.width, canvasTTD.height);
 }
 
 function simpanTTD() {
   showConfirm('SIMPAN TANDA TANGAN DIGITAL INI?', () => {
+    if (!canvasTTD) return;
     const png = canvasTTD.toDataURL('image/png');
-    const ttdMap = JSON.parse(localStorage.getItem(TTD_DB_KEY) || '{}');
+    const ttdMap = JSON.parse(appStorage.getItem(TTD_DB_KEY) || '{}');
     const key = currentUser.category === 'DM' ? 'DM' : `SERVICE_${currentUser.area}`;
     ttdMap[key] = png;
     ttdMap[currentUser.fullName] = png;
-    localStorage.setItem(TTD_DB_KEY, JSON.stringify(ttdMap));
+    ttdMap[currentUser.username] = png;
+    ttdMap[currentUser.id] = png;
+    if (currentUser.category === 'SERVICE') {
+      ttdMap['SERVICE'] = png;
+      ttdMap[`SERVICE_${currentUser.area}`] = png;
+      ttdMap['HODS'] = png;
+    }
+    appStorage.setItem(TTD_DB_KEY, JSON.stringify(ttdMap));
+    
+    // SIMPAN PERSISTEN PADA PENYIMPANAN LOKAL (LOCALSTORAGE) PERANGKAT
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('APP_USER_TTD_MAP', JSON.stringify(ttdMap));
+        if (currentUser) {
+          if (currentUser.id) localStorage.setItem(`LOCAL_TTD_${currentUser.id}`, png);
+          if (currentUser.username) localStorage.setItem(`LOCAL_TTD_${currentUser.username}`, png);
+        }
+      }
+    } catch(e) {}
+
+    if (currentUser) {
+      if (currentUser.id) appStorage.setItem(`LOCAL_TTD_${currentUser.id}`, png);
+      if (currentUser.username) appStorage.setItem(`LOCAL_TTD_${currentUser.username}`, png);
+    }
+    
     pushCentralCloudDB();
-    showNotif('TANDA TANGAN DIGITAL BERHASIL DISIMPAN!', 'info');
+    showNotif('TANDA TANGAN BERHASIL DISIMPAN PADA PENYIMPANAN LOKAL PERANGKAT & CLOUD!', 'info');
     tutupTTD();
   });
 }
 
 function loadTTD() {
-  const ttdMap = JSON.parse(localStorage.getItem(TTD_DB_KEY) || '{}');
-  const data = ttdMap[currentUser.fullName];
-  if (data && ctxTTD) {
+  let localTTD = null;
+  try {
+    if (typeof localStorage !== 'undefined' && currentUser) {
+      localTTD = localStorage.getItem(`LOCAL_TTD_${currentUser.id}`) || localStorage.getItem(`LOCAL_TTD_${currentUser.username}`);
+    }
+  } catch(e) {}
+
+  let ttdMap = {};
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const rawMap = localStorage.getItem('APP_USER_TTD_MAP');
+      if (rawMap) ttdMap = JSON.parse(rawMap);
+    }
+  } catch(e) {}
+
+  if (!Object.keys(ttdMap).length) {
+    ttdMap = JSON.parse(appStorage.getItem(TTD_DB_KEY) || '{}');
+  }
+
+  const data = localTTD || (currentUser ? (appStorage.getItem(`LOCAL_TTD_${currentUser.id}`) || appStorage.getItem(`LOCAL_TTD_${currentUser.username}`) || ttdMap[currentUser.id] || ttdMap[currentUser.username] || ttdMap[currentUser.fullName]) : null);
+  if (data && ctxTTD && canvasTTD) {
     const img = new Image();
     img.onload = () => {
       ctxTTD.clearRect(0, 0, canvasTTD.width, canvasTTD.height);
@@ -2545,10 +4165,88 @@ function loadTTD() {
   }
 }
 
-// LIVE CHAT WIDGET
-function bukaBantuan() {
-  document.getElementById('helpButton').style.display = 'none';
-  document.getElementById('popupBantuan').classList.add('show');
+let activeChatRefreshInterval = null;
+
+function refreshActiveChatUI() {
+  if (!currentUser) return;
+  const popupBantuan = document.getElementById('popupBantuan');
+  if (popupBantuan && (popupBantuan.classList.contains('show') || popupBantuan.style.display === 'block')) {
+    const chatBody = document.getElementById('chatBody');
+    if (typeof isAdminChat !== 'undefined' && isAdminChat) {
+      if (typeof currentRoom !== 'undefined' && currentRoom && chatBody && chatBody.style.display !== 'none') {
+        loadChatAdmin(currentRoom);
+      } else {
+        loadDaftarChatAdmin();
+      }
+    } else {
+      loadChatUser();
+    }
+  }
+  if (typeof updateNotifBellCounter === 'function') updateNotifBellCounter();
+  if (typeof cekUnreadNotif === 'function') cekUnreadNotif();
+}
+
+function startActiveChatRefresh() {
+  if (activeChatRefreshInterval) return;
+  activeChatRefreshInterval = setInterval(() => {
+    const popupBantuan = document.getElementById('popupBantuan');
+    if (popupBantuan && (popupBantuan.classList.contains('show') || popupBantuan.style.display === 'block')) {
+      if (typeof syncAllDataToCache === 'function') {
+        syncAllDataToCache().then(() => {
+          refreshActiveChatUI();
+        }).catch(() => {
+          refreshActiveChatUI();
+        });
+      } else {
+        refreshActiveChatUI();
+      }
+    } else {
+      stopActiveChatRefresh();
+    }
+  }, 2000);
+}
+
+function stopActiveChatRefresh() {
+  if (activeChatRefreshInterval) {
+    clearInterval(activeChatRefreshInterval);
+    activeChatRefreshInterval = null;
+  }
+}
+
+window.addEventListener('storage', (e) => {
+  if (e.key === CHAT_DB_KEY || e.key === CHAT_ROOM_DB_KEY) {
+    refreshActiveChatUI();
+  }
+});
+
+function isServiceTSMUser() {
+  if (!currentUser) return false;
+  const cat = String(currentUser.category || '').trim().toUpperCase();
+  const area = String(currentUser.area || '').trim().toUpperCase();
+  const uname = String(currentUser.username || '').trim().toUpperCase();
+
+  return (cat === 'SERVICE' && (area === 'TSM' || area === 'ALL')) || cat === 'ADMIN' || uname === 'ADMIN';
+}
+
+async function bukaBantuan() {
+  if (!currentUser) return;
+  
+  // SERVICE TSM or ADMIN acts as Customer Service Support Receiver
+  isAdminChat = isServiceTSMUser();
+
+  const popup = document.getElementById('popupBantuan');
+  const btnHelp = document.getElementById('helpButton');
+  if (btnHelp) btnHelp.style.display = 'none';
+  if (popup) {
+    popup.style.display = 'block';
+    popup.classList.add('show');
+    try { history.pushState({ popup: 'bantuan' }, '', location.href); } catch(e) {}
+  }
+
+  // SINKRONKAN CHAT & ROOM TERBARU DARI CLOUD DB PADA SAAT MENU CHAT DIBUKA
+  if (typeof syncAllDataToCache === 'function') {
+    await syncAllDataToCache().catch(() => {});
+  }
 
   const chatList = document.getElementById('chatList');
   const chatBody = document.getElementById('chatBody');
@@ -2561,43 +4259,68 @@ function bukaBantuan() {
     if (chatBody) chatBody.style.display = 'none';
     if (chatFooter) chatFooter.style.display = 'none';
     if (btnBack) btnBack.style.display = 'none';
-    if (headerTitle) headerTitle.innerText = 'DAFTAR PESAN MASUK';
+    if (headerTitle) headerTitle.innerText = 'CHAT MASUK - SERVICE TSM';
     loadDaftarChatAdmin();
   } else {
     if (chatList) chatList.style.display = 'none';
     if (chatBody) chatBody.style.display = 'block';
     if (chatFooter) chatFooter.style.display = 'flex';
     if (btnBack) btnBack.style.display = 'none';
-    if (headerTitle) headerTitle.innerText = 'ADMIN SUPPORT';
+    if (headerTitle) headerTitle.innerText = 'SERVICE TSM SUPPORT';
     loadChatUser();
   }
+
+  // AKTIFKAN REFRESH CHAT REALTIME JIKA KOLOM CHAT SEDANG DIBUKA
+  startActiveChatRefresh();
 }
 
 function tutupBantuan() {
-  document.getElementById('popupBantuan').classList.remove('show');
-  document.getElementById('helpButton').style.display = 'flex';
-  cekUnreadNotif();
+  stopActiveChatRefresh();
+
+  const popup = document.getElementById('popupBantuan');
+  if (popup) {
+    popup.classList.remove('show'); 
+    setTimeout(() => popup.style.display = 'none', 250); 
+  }
+  
+  const activePage = typeof getCurrentActivePageId === 'function' ? getCurrentActivePageId() : 'dashboardPage';
+  if (typeof aturTampilanLonceng === 'function') {
+    aturTampilanLonceng(activePage);
+  }
+
+  if (typeof cekUnreadNotif === 'function') {
+    cekUnreadNotif();
+  }
 }
 
 function loadDaftarChatAdmin() {
   const chatList = document.getElementById('chatList');
   if (!chatList) return;
-  const rooms = JSON.parse(localStorage.getItem(CHAT_ROOM_DB_KEY) || '[]');
+  const rooms = JSON.parse(appStorage.getItem(CHAT_ROOM_DB_KEY) || '[]');
   chatList.innerHTML = '';
 
-  if (rooms.length === 0) {
-    chatList.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-muted);">BELUM ADA PESAN MASUK.</div>`;
+  if (!rooms || rooms.length === 0) {
+    chatList.innerHTML = `
+      <div style="padding:30px 16px; text-align:center; color:var(--text-muted); font-size:12.5px;">
+        <span class="material-symbols-rounded" style="font-size:36px; color:var(--primary); margin-bottom:6px; display:block;">chat_bubble_outline</span>
+        BELUM ADA CHAT MASUK DARI TOKO / SALES.
+      </div>
+    `;
     return;
   }
 
   rooms.forEach(r => {
     const item = document.createElement('div');
-    item.style.cssText = 'padding:12px; border-bottom:1px solid var(--border-color); cursor:pointer;';
+    item.style.cssText = 'padding:12px 14px; border-bottom:1px solid var(--border-color); cursor:pointer; transition:background 0.2s;';
+    const unreadBadgeHtml = r.unreadAdmin > 0 ? `<span style="background:#ef4444; color:#fff; border-radius:10px; padding:2px 8px; font-size:10px; font-weight:bold;">${r.unreadAdmin} UNREAD</span>` : '';
     item.innerHTML = `
-      <div style="font-size:13px;">
-        ${r.user} ${r.unreadAdmin > 0 ? `<span style="background:#ef4444; color:#fff; border-radius:10px; padding:2px 6px; font-size:10px;">${r.unreadAdmin}</span>` : ''}
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <div style="font-size:13px; font-weight:700; color:var(--text-main);">
+          ${r.user} <span style="font-size:11px; font-weight:bold; color:var(--primary); background:rgba(59,130,246,0.15); padding:2px 6px; border-radius:4px;">(${r.userArea || 'TSM'})</span>
+        </div>
+        ${unreadBadgeHtml}
       </div>
-      <div style="color:var(--text-muted); font-size:11px; margin-top:2px;">${r.last}</div>
+      <div style="color:var(--text-muted); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.last || '-'}</div>
     `;
     item.onclick = () => bukaRoomAdmin(r.room, r.user);
     chatList.appendChild(item);
@@ -2607,112 +4330,229 @@ function loadDaftarChatAdmin() {
 function bukaRoomAdmin(room, user) {
   currentRoom = room;
   currentChatUser = user;
-  document.getElementById('chatList').style.display = 'none';
-  document.getElementById('chatBody').style.display = 'block';
-  document.getElementById('chatFooter').style.display = 'flex';
-  document.getElementById('btnBackAdmin').style.display = 'inline-block';
-  document.getElementById('chatHeaderTitle').innerText = 'CHAT WITH ' + user;
+
+  const rooms = JSON.parse(appStorage.getItem(CHAT_ROOM_DB_KEY) || '[]');
+  const roomUpper = String(room || '').toUpperCase();
+  const userUpper = String(user || '').toUpperCase();
+
+  const rIdx = rooms.findIndex(x => String(x.room || '').toUpperCase() === roomUpper || String(x.user || '').toUpperCase() === userUpper);
+  if (rIdx !== -1) {
+    rooms[rIdx].unreadAdmin = 0;
+    appStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify(rooms));
+    if (typeof pushCentralCloudDB === 'function') pushCentralCloudDB();
+  }
+
+  const chatList = document.getElementById('chatList');
+  const chatBody = document.getElementById('chatBody');
+  const chatFooter = document.getElementById('chatFooter');
+  const btnBack = document.getElementById('btnBackAdmin');
+  const headerTitle = document.getElementById('chatHeaderTitle');
+
+  if (chatList) chatList.style.display = 'none';
+  if (chatBody) chatBody.style.display = 'block';
+  if (chatFooter) chatFooter.style.display = 'flex';
+  if (btnBack) btnBack.style.display = 'inline-block';
+  if (headerTitle) headerTitle.innerText = 'CHAT WITH ' + user;
   loadChatAdmin(room);
 }
 
 function loadChatAdmin(room) {
-  const allChats = JSON.parse(localStorage.getItem(CHAT_DB_KEY) || '[]');
-  const roomChats = allChats.filter(c => c.room === room);
+  const allChats = JSON.parse(appStorage.getItem(CHAT_DB_KEY) || '[]');
+  const roomUpper = String(room || '').toUpperCase();
+  const userUpper = String(currentChatUser || '').toUpperCase();
+
+  const roomChats = allChats.filter(c => 
+    String(c.room || '').toUpperCase() === roomUpper || 
+    String(c.user || '').toUpperCase() === userUpper
+  );
+
   const body = document.getElementById('chatBody');
   if (!body) return;
+
+  const isAtBottom = (body.scrollHeight - body.scrollTop - body.clientHeight) < 80;
   body.innerHTML = '';
 
-  roomChats.forEach(c => {
-    const isSelf = (c.pengirim === 'ADMIN');
-    const div = document.createElement('div');
-    div.className = isSelf ? 'chatUser' : 'chatAdmin';
-    div.innerHTML = `
-      <div class="chatText">${c.pesan}</div>
-      <div class="chatTime">${c.tanggal}</div>
-    `;
-    body.appendChild(div);
-  });
+  if (roomChats.length === 0) {
+    body.innerHTML = `<div class="chatAdmin"><div class="chatText">PESAN DARI ${currentChatUser || 'USER'} AKAN TAMPIL DI SINI.</div></div>`;
+  } else {
+    roomChats.forEach(c => {
+      const isSelf = (c.pengirim === 'SERVICE' || c.pengirim === 'ADMIN' || (currentUser && String(c.senderUsername).toUpperCase() === String(currentUser.username).toUpperCase()));
+      const div = document.createElement('div');
+      div.className = isSelf ? 'chatUser' : 'chatAdmin';
+      div.innerHTML = `
+        <div class="chatText">${c.pesan}</div>
+        <div class="chatTime">${c.tanggal}</div>
+      `;
+      body.appendChild(div);
+    });
+  }
 
-  body.scrollTop = body.scrollHeight;
+  if (isAtBottom || roomChats.length <= 5) {
+    body.scrollTop = body.scrollHeight;
+  }
 }
 
 function loadChatUser() {
-  const allChats = JSON.parse(localStorage.getItem(CHAT_DB_KEY) || '[]');
-  const userChats = allChats.filter(c => c.user === currentUser.username);
+  const allChats = JSON.parse(appStorage.getItem(CHAT_DB_KEY) || '[]');
+  const myUsernameUpper = String(currentUser ? currentUser.username : '').toUpperCase();
+  const roomName = 'ROOM_' + myUsernameUpper;
+
+  const userChats = allChats.filter(c => 
+    String(c.room || '').toUpperCase() === roomName || 
+    String(c.user || '').toUpperCase() === myUsernameUpper ||
+    String(c.senderUsername || '').toUpperCase() === myUsernameUpper
+  );
+
   const body = document.getElementById('chatBody');
   if (!body) return;
+
+  const rooms = JSON.parse(appStorage.getItem(CHAT_ROOM_DB_KEY) || '[]');
+  const rIdx = rooms.findIndex(x => String(x.room || '').toUpperCase() === roomName || String(x.user || '').toUpperCase() === myUsernameUpper);
+  if (rIdx !== -1 && rooms[rIdx].unreadUser > 0) {
+    rooms[rIdx].unreadUser = 0;
+    appStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify(rooms));
+    if (typeof pushCentralCloudDB === 'function') pushCentralCloudDB(); 
+    if (typeof cekUnreadNotif === 'function') cekUnreadNotif();
+  }
+
+  const isAtBottom = (body.scrollHeight - body.scrollTop - body.clientHeight) < 80;
   body.innerHTML = '';
 
   if (userChats.length === 0) {
-    body.innerHTML = `<div class="chatAdmin"><div class="chatText">HALO 👋<br>ADA YANG BISA KAMI BANTU?</div></div>`;
-    return;
+    body.innerHTML = `
+      <div class="chatAdmin">
+        <div class="chatText">HALO 👋<br>ADA YANG BISA KAMI BANTU UNTUK PERMINTAAN TOKO ANDA? SILAKAN KIRIM PESAN DI SINI.</div>
+      </div>
+    `;
+  } else {
+    userChats.forEach(c => {
+      const isSelf = (c.pengirim === 'USER' || (currentUser && String(c.senderUsername).toUpperCase() === myUsernameUpper));
+      const div = document.createElement('div');
+      div.className = isSelf ? 'chatUser' : 'chatAdmin';
+      div.innerHTML = `
+        <div class="chatText">${c.pesan}</div>
+        <div class="chatTime">${c.tanggal}</div>
+      `;
+      body.appendChild(div);
+    });
   }
 
-  userChats.forEach(c => {
-    const isSelf = (c.pengirim === 'USER');
-    const div = document.createElement('div');
-    div.className = isSelf ? 'chatUser' : 'chatAdmin';
-    div.innerHTML = `
-      <div class="chatText">${c.pesan}</div>
-      <div class="chatTime">${c.tanggal}</div>
-    `;
-    body.appendChild(div);
-  });
-
-  body.scrollTop = body.scrollHeight;
+  if (isAtBottom || userChats.length <= 5) {
+    body.scrollTop = body.scrollHeight;
+  }
 }
 
 function kirimPesanChat() {
   const txt = document.getElementById('chatPesan');
-  if (!txt) return;
+  if (!txt || !currentUser) return;
   const pesan = txt.value.trim().toUpperCase();
   if (!pesan) return;
 
-  const allChats = JSON.parse(localStorage.getItem(CHAT_DB_KEY) || '[]');
-  const rooms = JSON.parse(localStorage.getItem(CHAT_ROOM_DB_KEY) || '[]');
+  const allChats = JSON.parse(appStorage.getItem(CHAT_DB_KEY) || '[]');
+  const rooms = JSON.parse(appStorage.getItem(CHAT_ROOM_DB_KEY) || '[]');
+  const senderId = currentUser.id;
+  const senderUsername = currentUser.username;
+  const now = new Date();
+  const timeStr = getFormattedDateDDMMYYYY(now) + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
 
   if (isAdminChat) {
+    const targetUser = currentChatUser || 'USER';
+    const roomTarget = currentRoom || ('ROOM_' + String(targetUser).toUpperCase());
+    const roomUpper = String(roomTarget).toUpperCase();
+
     allChats.push({
-      room: currentRoom,
-      user: currentChatUser,
-      pengirim: 'ADMIN',
+      room: roomTarget,
+      user: targetUser,
+      pengirim: 'SERVICE',
+      senderId,
+      senderUsername,
+      senderName: `SERVICE TSM (${currentUser.fullName || currentUser.username})`,
       pesan,
-      tanggal: getFormattedDateDDMMYYYY() + ' ' + new Date().toLocaleTimeString('id-ID')
+      tanggal: timeStr
     });
-    localStorage.setItem(CHAT_DB_KEY, JSON.stringify(allChats));
+
+    const rIdx = rooms.findIndex(x => String(x.room).toUpperCase() === roomUpper || String(x.user).toUpperCase() === String(targetUser).toUpperCase());
+    if (rIdx !== -1) {
+      rooms[rIdx].last = `SERVICE TSM: ${pesan}`;
+      rooms[rIdx].unreadUser = (rooms[rIdx].unreadUser || 0) + 1;
+      rooms[rIdx].lastTime = timeStr;
+    } else {
+      rooms.push({
+        room: roomTarget,
+        user: targetUser,
+        userArea: 'TSM',
+        last: `SERVICE TSM: ${pesan}`,
+        unreadAdmin: 0,
+        unreadUser: 1,
+        lastTime: timeStr
+      });
+    }
+
+    appStorage.setItem(CHAT_DB_KEY, JSON.stringify(allChats));
+    appStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify(rooms));
+    if (typeof pushCentralCloudDB === 'function') pushCentralCloudDB();
+
     txt.value = '';
-    loadChatAdmin(currentRoom);
+    loadChatAdmin(roomTarget);
   } else {
-    const room = 'ROOM_' + currentUser.username;
+    const myUsernameUpper = String(currentUser.username).toUpperCase();
+    const room = 'ROOM_' + myUsernameUpper;
+    const roomUpper = room.toUpperCase();
+
     allChats.push({
       room,
       user: currentUser.username,
+      userArea: currentUser.area,
       pengirim: 'USER',
+      senderId,
+      senderUsername,
+      senderName: `${currentUser.fullName || currentUser.username} (${currentUser.toko || currentUser.area})`,
       pesan,
-      tanggal: getFormattedDateDDMMYYYY() + ' ' + new Date().toLocaleTimeString('id-ID')
+      tanggal: timeStr
     });
-    localStorage.setItem(CHAT_DB_KEY, JSON.stringify(allChats));
 
-    const rIdx = rooms.findIndex(x => x.room === room);
+    const rIdx = rooms.findIndex(x => String(x.room).toUpperCase() === roomUpper || String(x.user).toUpperCase() === myUsernameUpper);
     if (rIdx !== -1) {
       rooms[rIdx].last = pesan;
       rooms[rIdx].unreadAdmin = (rooms[rIdx].unreadAdmin || 0) + 1;
+      rooms[rIdx].lastTime = timeStr;
+      rooms[rIdx].userArea = currentUser.area;
     } else {
-      rooms.push({ room, user: currentUser.username, last: pesan, unreadAdmin: 1 });
+      rooms.push({
+        room,
+        user: currentUser.username,
+        userArea: currentUser.area,
+        last: pesan,
+        unreadAdmin: 1,
+        unreadUser: 0,
+        lastTime: timeStr
+      });
     }
-    localStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify(rooms));
+
+    appStorage.setItem(CHAT_DB_KEY, JSON.stringify(allChats));
+    appStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify(rooms));
+    if (typeof pushCentralCloudDB === 'function') pushCentralCloudDB();
 
     txt.value = '';
     loadChatUser();
   }
+
+  if (typeof updateNotifBellCounter === 'function') updateNotifBellCounter();
+  if (typeof cekUnreadNotif === 'function') cekUnreadNotif();
 }
 
 function kembaliKeDaftarAdmin() {
-  document.getElementById('chatBody').style.display = 'none';
-  document.getElementById('chatFooter').style.display = 'none';
-  document.getElementById('chatList').style.display = 'block';
-  document.getElementById('btnBackAdmin').style.display = 'none';
-  document.getElementById('chatHeaderTitle').innerText = 'DAFTAR PESAN MASUK';
+  const chatList = document.getElementById('chatList');
+  const chatBody = document.getElementById('chatBody');
+  const chatFooter = document.getElementById('chatFooter');
+  const btnBack = document.getElementById('btnBackAdmin');
+  const headerTitle = document.getElementById('chatHeaderTitle');
+
+  if (chatBody) chatBody.style.display = 'none';
+  if (chatFooter) chatFooter.style.display = 'none';
+  if (chatList) chatList.style.display = 'block';
+  if (btnBack) btnBack.style.display = 'none';
+  if (headerTitle) headerTitle.innerText = 'DAFTAR PESAN MASUK';
   loadDaftarChatAdmin();
 }
 
@@ -2721,8 +4561,9 @@ function cekUnreadNotif() {
   const badge = document.getElementById('unreadBadge');
   if (!badge) return;
 
+  const rooms = JSON.parse(appStorage.getItem(CHAT_ROOM_DB_KEY) || '[]');
+
   if (isAdminChat) {
-    const rooms = JSON.parse(localStorage.getItem(CHAT_ROOM_DB_KEY) || '[]');
     const total = rooms.reduce((acc, curr) => acc + (curr.unreadAdmin || 0), 0);
     if (total > 0) {
       badge.textContent = total > 99 ? '99+' : total;
@@ -2731,12 +4572,144 @@ function cekUnreadNotif() {
       badge.style.display = 'none';
     }
   } else {
-    badge.style.display = 'none';
+    const myRoom = rooms.find(r => r.room === 'ROOM_' + currentUser.username);
+    if (myRoom && myRoom.unreadUser > 0) {
+      badge.textContent = myRoom.unreadUser > 99 ? '99+' : myRoom.unreadUser;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
   }
 }
 
-// USER MANAGEMENT ENGINE
+function hapusSemuaChatAdmin() {
+  if (!currentUser || (currentUser.category !== 'ADMIN' && String(currentUser.username).toUpperCase() !== 'ADMIN')) {
+    showNotif('HANYA SUPER ADMIN YANG DAPAT MENGHAPUS SELURUH CHAT!', 'warning');
+    return;
+  }
+
+  showConfirm('YAKIN INGIN MENGHAPUS SELURUH RIWAYAT CHAT & ROOM DARI FIREBASE CLOUD & PENYIMPANAN LOKAL?', () => {
+    showLoading('MENGHAPUS SEMUA CHAT CLOUD...');
+    setTimeout(async () => {
+      try {
+        // 1. KOSONGKAN PENYIMPANAN LOKAL
+        appStorage.setItem(CHAT_DB_KEY, JSON.stringify([]));
+        appStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify([]));
+
+        // 2. KOSONGKAN DI FIRESTORE
+        if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+          try {
+            await dbFirestore.collection('app_settings').doc('config').set({
+              chatMessages: [],
+              chatRooms: []
+            }, { merge: true });
+          } catch(e) {
+            console.warn('[FIRESTORE CHAT DELETE NOTICE]:', e);
+          }
+        }
+
+        // 3. KOSONGKAN DI REALTIME DB
+        if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+          try {
+            await dbRealtime.ref('chat_messages').remove();
+            await dbRealtime.ref('chat_rooms').remove();
+          } catch(e) {
+            console.warn('[RTDB CHAT DELETE NOTICE]:', e);
+          }
+        }
+
+        // 4. SYNC CENTRAL CLOUD
+        if (typeof pushCentralCloudDB === 'function') {
+          pushCentralCloudDB();
+        }
+
+        hideLoading();
+        showNotif('SELURUH PESAN CHAT & ROOM BERHASIL DIHAPUS DARI FIREBASE CLOUD!', 'success');
+
+        if (typeof refreshActiveChatUI === 'function') {
+          refreshActiveChatUI();
+        }
+      } catch (err) {
+        hideLoading();
+        console.error('[HAPUS CHAT ERROR]:', err);
+        showNotif('TERJADI KESALAHAN SAAT MENGHAPUS CHAT!', 'error');
+      }
+    }, 400);
+  });
+}
+window.hapusSemuaChatAdmin = hapusSemuaChatAdmin;
+
+window.bukaBantuan = bukaBantuan;
+window.tutupBantuan = tutupBantuan;
+window.kirimPesanChat = kirimPesanChat;
+window.kembaliKeDaftarAdmin = kembaliKeDaftarAdmin;
+window.cekUnreadNotif = cekUnreadNotif;
+window.loadDaftarChatAdmin = loadDaftarChatAdmin;
+window.bukaRoomAdmin = bukaRoomAdmin;
+window.loadChatAdmin = loadChatAdmin;
+window.loadChatUser = loadChatUser;
+window.startGlobalRealtimeLoop = startGlobalRealtimeLoop;
+
+// GLOBAL EVENT LISTENER: CLICK OUTSIDE BACKDROP TO CLOSE POPUPS (PC / LAPTOP / MOBILE)
+window.addEventListener('click', function (e) {
+  // 1. Detail Barang Popup (#popupDetail)
+  const popupDetail = document.getElementById('popupDetail');
+  if (popupDetail && e.target === popupDetail && typeof closeDetail === 'function') {
+    closeDetail();
+  }
+
+  // 2. Akun Profile Popup (#popupAkun)
+  const popupAkun = document.getElementById('popupAkun');
+  if (popupAkun && e.target === popupAkun && typeof tutupAkun === 'function') {
+    tutupAkun();
+  }
+
+  // 3. PDF Models Selector Modal (#popupPdfModelsModal)
+  const popupPdfModelsModal = document.getElementById('popupPdfModelsModal');
+  if (popupPdfModelsModal && e.target === popupPdfModelsModal && typeof tutupModalPdfModels === 'function') {
+    tutupModalPdfModels();
+  }
+
+  // 4. PDF Document Modal (#pdfModal)
+  const pdfModal = document.getElementById('pdfModal');
+  if (pdfModal && e.target === pdfModal && typeof tutupPdfModal === 'function') {
+    tutupPdfModal();
+  }
+
+  // 5. User Form Modal (#popupUserForm)
+  const popupUserForm = document.getElementById('popupUserForm');
+  if (popupUserForm && e.target === popupUserForm && typeof tutupUserModal === 'function') {
+    tutupUserModal();
+  }
+
+  // 6. Tambah Toko Modal (#popupTambahToko)
+  const popupTambahToko = document.getElementById('popupTambahToko');
+  if (popupTambahToko && e.target === popupTambahToko && typeof tutupModalTambahToko === 'function') {
+    tutupModalTambahToko();
+  }
+
+  // 7. Reject Reason Modal (#rejectOverlay)
+  const rejectOverlay = document.getElementById('rejectOverlay');
+  if (rejectOverlay && e.target === rejectOverlay && typeof closeReject === 'function') {
+    closeReject();
+  }
+
+  // 8. TTD Modal (#popupTTD)
+  const popupTTD = document.getElementById('popupTTD');
+  if (popupTTD && e.target === popupTTD && typeof tutupTTD === 'function') {
+    tutupTTD();
+  }
+
+  // 9. Image Viewer Modal (#imageViewer)
+  const imageViewer = document.getElementById('imageViewer');
+  if (imageViewer && e.target === imageViewer && typeof tutupImageViewer === 'function') {
+    tutupImageViewer();
+  }
+});
+
+
 function loadUsersManagement() {
+  loadAdminScriptUrlInput();
   const tbody = document.getElementById('userTableBody');
   if (!tbody) return;
 
@@ -2750,8 +4723,11 @@ function loadUsersManagement() {
   tbody.innerHTML = '';
 
   users.forEach(u => {
+    const isSuperAdmin = (String(u.username).trim().toUpperCase() === 'ADMIN');
+    const chkHtml = !isSuperAdmin ? `<input type="checkbox" class="userCheckbox" value="${u.id}" onchange="updateMultiUserBtnState()" style="cursor:pointer; width:16px; height:16px;">` : '';
     const tr = document.createElement('tr');
     tr.innerHTML = `
+      <td style="text-align:center;">${chkHtml}</td>
       <td style="font-weight:600; color:var(--text-main);">${u.username}</td>
       <td style="font-family:monospace; color:var(--text-muted);">${u.password}</td>
       <td>${u.fullName}</td>
@@ -2761,46 +4737,175 @@ function loadUsersManagement() {
       <td><span style="color:var(--primary); font-weight:600;">${u.area}</span></td>
       <td style="text-align: right; white-space:nowrap;">
         <button class="btnIcon btnEdit" onclick="bukaUserModal('${u.id}')" title="EDIT USER"><span class="material-symbols-rounded">edit</span></button>
-        <button class="btnIcon btnDelete" onclick="hapusUser('${u.id}')" title="HAPUS USER"><span class="material-symbols-rounded">delete</span></button>
+        ${!isSuperAdmin ? `<button class="btnIcon btnDelete" onclick="hapusUser('${u.id}')" title="HAPUS USER"><span class="material-symbols-rounded">delete</span></button>` : ''}
       </td>
     `;
     tbody.appendChild(tr);
   });
+  updateMultiUserBtnState();
 }
 
+function toggleSelectAllUsers(masterCheckbox) {
+  const isChecked = masterCheckbox ? masterCheckbox.checked : false;
+  const checkboxes = document.querySelectorAll('.userCheckbox');
+  checkboxes.forEach(cb => {
+    cb.checked = isChecked;
+  });
+  updateMultiUserBtnState();
+}
+
+function updateMultiUserBtnState() {
+  const checkboxes = document.querySelectorAll('.userCheckbox:checked');
+  const btn = document.getElementById('btnHapusMultiUser');
+  const selectAll = document.getElementById('selectAllUsers');
+  const totalCheckboxes = document.querySelectorAll('.userCheckbox');
+
+  if (selectAll && totalCheckboxes.length > 0) {
+    selectAll.checked = (checkboxes.length === totalCheckboxes.length);
+  }
+
+  if (btn) {
+    if (checkboxes.length > 0) {
+      btn.style.display = 'inline-flex';
+      btn.innerHTML = `<span class="material-symbols-rounded" style="vertical-align:middle; margin-right:4px;">delete_sweep</span> HAPUS (${checkboxes.length}) USER`;
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+}
+
+function hapusMultiUser() {
+  const selectedCheckboxes = document.querySelectorAll('.userCheckbox:checked');
+  const userIds = Array.from(selectedCheckboxes).map(cb => cb.value).filter(Boolean);
+
+  if (userIds.length === 0) {
+    showNotif('PILIH MINIMAL 1 USER UNTUK DIHAPUS!', 'warning');
+    return;
+  }
+
+  const users = getUsersFromDB();
+  const selectedUsers = users.filter(u => userIds.includes(u.id) && String(u.username).trim().toUpperCase() !== 'ADMIN');
+
+  if (selectedUsers.length === 0) {
+    showNotif('TIDAK ADA USER VALID YANG DAPAT DIHAPUS!', 'warning');
+    return;
+  }
+
+  const usernamesStr = selectedUsers.map(u => u.username).join(', ');
+
+  showConfirm(`YAKIN INGIN MENGHAPUS ${selectedUsers.length} USER TERPILIH? (${usernamesStr})`, () => {
+    showLoading('MENGHAPUS USER & TOKO TERPILIH...');
+    setTimeout(async () => {
+      try {
+        const delUsers = JSON.parse(appStorage.getItem(DELETED_USERS_KEY) || '[]');
+        const delStores = JSON.parse(appStorage.getItem(DELETED_STORES_KEY) || '[]');
+        let localStores = JSON.parse(appStorage.getItem(STORES_DB_KEY) || '[]');
+
+        for (const u of selectedUsers) {
+          if (!delUsers.includes(u.id)) delUsers.push(u.id);
+
+          const docId = String(u.username).toUpperCase();
+          if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+            await dbFirestore.collection('users').doc(docId).delete().catch(e => console.warn(e));
+          }
+          if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+            await dbRealtime.ref(`users/${docId}`).remove().catch(e => console.warn(e));
+          }
+
+          if (u.category === 'TOKO' || u.fullName) {
+            const storeKey = `${u.fullName.toUpperCase()}_${u.area}`;
+            if (!delStores.includes(storeKey)) delStores.push(storeKey);
+            localStores = localStores.filter(s => s.id !== u.id && s.fullName.toUpperCase() !== u.fullName.toUpperCase());
+
+            if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+              await dbFirestore.collection('stores').doc(u.id).delete().catch(e => console.warn(e));
+            }
+            if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+              await dbRealtime.ref(`stores/${u.id}`).remove().catch(e => console.warn(e));
+            }
+          }
+        }
+
+        appStorage.setItem(DELETED_USERS_KEY, JSON.stringify(delUsers));
+        appStorage.setItem(DELETED_STORES_KEY, JSON.stringify(delStores));
+        appStorage.setItem(STORES_DB_KEY, JSON.stringify(localStores));
+
+        const remainingUsers = users.filter(u => !userIds.includes(u.id) || String(u.username).trim().toUpperCase() === 'ADMIN');
+        saveUsersToDB(remainingUsers);
+
+        if (typeof pushCentralCloudDB === 'function') {
+          await pushCentralCloudDB();
+        }
+
+        if (typeof syncAllDataToCache === 'function') {
+          await syncAllDataToCache().catch(() => {});
+        }
+
+        hideLoading();
+        showNotif(`BERHASIL MENGHAPUS ${selectedUsers.length} USER & TOKO TERPILIH!`, 'success');
+        if (typeof loadUsersManagement === 'function') loadUsersManagement();
+        if (typeof loadForm === 'function') loadForm();
+        if (typeof loadDaftarTokoModal === 'function') loadDaftarTokoModal();
+      } catch (err) {
+        hideLoading();
+        console.error('[HAPUS MULTI USER ERROR]:', err);
+        showNotif('TERJADI KESALAHAN SAAT MENGHAPUS USER!', 'error');
+      }
+    }, 400);
+  });
+}
+window.toggleSelectAllUsers = toggleSelectAllUsers;
+window.updateMultiUserBtnState = updateMultiUserBtnState;
+window.hapusMultiUser = hapusMultiUser;
+
 function bukaUserModal(userId = null) {
-  document.getElementById('editUserId').value = userId || '';
+  if (typeof userId !== 'string' || userId.startsWith('[object')) {
+    userId = null;
+  }
+
+  const editIdInput = document.getElementById('editUserId');
+  if (editIdInput) editIdInput.value = userId || '';
+
   const title = document.getElementById('userFormTitle');
 
   if (userId) {
-    const u = getUsersFromDB().find(x => x.id === userId);
-    if (!u) return;
-    document.getElementById('uFormUsername').value = u.username;
-    document.getElementById('uFormPassword').value = u.password;
-    document.getElementById('uFormFullName').value = u.fullName;
-    document.getElementById('uFormStoreCode').value = u.storeCode || '';
-    document.getElementById('uFormPhone').value = u.phone;
-    document.getElementById('uFormCategory').value = u.category;
-    document.getElementById('uFormArea').value = u.area;
-    title.textContent = `EDIT USER: ${u.username}`;
+    const u = getUsersFromDB().find(x => x && x.id === userId);
+    if (u) {
+      document.getElementById('uFormUsername').value = u.username || '';
+      document.getElementById('uFormPassword').value = u.password || '';
+      document.getElementById('uFormFullName').value = u.fullName || '';
+      document.getElementById('uFormStoreCode').value = u.storeCode || '';
+      document.getElementById('uFormPhone').value = u.phone || '';
+      document.getElementById('uFormCategory').value = u.category || 'TOKO';
+      document.getElementById('uFormArea').value = u.area || 'BDG';
+      if (title) title.textContent = `EDIT USER: ${u.username}`;
+    }
   } else {
     document.getElementById('uFormUsername').value = '';
     document.getElementById('uFormPassword').value = '';
     document.getElementById('uFormFullName').value = '';
     document.getElementById('uFormStoreCode').value = '';
     document.getElementById('uFormPhone').value = '';
-    title.textContent = 'TAMBAH USER BARU';
+    document.getElementById('uFormCategory').value = 'TOKO';
+    document.getElementById('uFormArea').value = 'BDG';
+    if (title) title.textContent = 'TAMBAH USER BARU';
   }
 
-  document.getElementById('popupUserForm').style.display = 'flex';
+  const modal = document.getElementById('popupUserForm');
+  if (modal) modal.style.display = 'flex';
 }
 
 function tutupUserModal() {
-  document.getElementById('popupUserForm').style.display = 'none';
+  const modal = document.getElementById('popupUserForm');
+  if (modal) modal.style.display = 'none';
 }
 
 function simpanUserData() {
-  const editId = document.getElementById('editUserId').value;
+  let editId = document.getElementById('editUserId') ? document.getElementById('editUserId').value : '';
+  if (typeof editId !== 'string' || editId.startsWith('[object')) {
+    editId = '';
+  }
+
   const username = document.getElementById('uFormUsername').value.trim().toUpperCase();
   const password = document.getElementById('uFormPassword').value.trim();
   const fullName = document.getElementById('uFormFullName').value.trim().toUpperCase();
@@ -2817,8 +4922,18 @@ function simpanUserData() {
   const users = getUsersFromDB();
 
   if (editId) {
-    const idx = users.findIndex(u => u.id === editId);
+    const idx = users.findIndex(u => u && u.id === editId);
     if (idx !== -1) {
+      const duplicateWithOtherUser = users.some(u => {
+        if (!u || !u.username || u.id === editId) return false;
+        return String(u.username).trim().toUpperCase() === username;
+      });
+
+      if (duplicateWithOtherUser) {
+        showNotif(`USERNAME '${username}' SUDAH TERDAFTAR! GUNAKAN USERNAME LAIN.`, 'error');
+        return;
+      }
+
       users[idx].username = username;
       users[idx].password = password;
       users[idx].fullName = fullName;
@@ -2827,28 +4942,81 @@ function simpanUserData() {
       users[idx].category = category;
       users[idx].area = area;
       saveUsersToDB(users);
-      showNotif(`USER ${username} DIPERBARUI!`, 'info');
-    }
-  } else {
-    if (users.some(u => u.username.toUpperCase() === username)) {
-      showNotif(`USERNAME '${username}' SUDAH TERDAFTAR!`, 'error');
+
+      const docId = String(username).toUpperCase();
+      if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+        dbFirestore.collection('users').doc(docId).set(users[idx], { merge: true }).catch(e => console.warn(e));
+      }
+      if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+        dbRealtime.ref(`users/${docId}`).set(users[idx]).catch(e => console.warn(e));
+      }
+      if (typeof pushCentralCloudDB === 'function') {
+        pushCentralCloudDB();
+      }
+
+      showNotif(`USER ${username} DIPERBARUI & DISINKRONKAN KE FIREBASE!`, 'info');
+      tutupUserModal();
+      loadUsersManagement();
       return;
     }
-    const newUser = {
-      id: `USR-${String(users.length + 1).padStart(3, '0')}`,
-      username,
-      password,
-      fullName,
-      storeCode,
-      phone,
-      category,
-      area,
-      createdAt: getFormattedDateDDMMYYYY()
-    };
-    users.push(newUser);
-    saveUsersToDB(users);
-    showNotif(`USER BARU ${username} BERHASIL DITAMBAHKAN!`, 'info');
   }
+
+  const deletedUserKeys = new Set(
+    (JSON.parse(appStorage.getItem(DELETED_USERS_KEY) || '[]') || [])
+      .filter(Boolean)
+      .map(v => String(v).trim())
+  );
+
+  const isDuplicate = users.some(u => {
+    if (!u || !u.username) return false;
+
+    const existingUsername = String(u.username).trim().toUpperCase();
+    if (existingUsername !== username) return false;
+    if (deletedUserKeys.has(String(u.id || '').trim()) || deletedUserKeys.has(existingUsername)) {
+      return false;
+    }
+    return true;
+  });
+
+  if (isDuplicate) {
+    showNotif(`USERNAME '${username}' SUDAH TERDAFTAR! GUNAKAN USERNAME LAIN.`, 'error');
+    return;
+  }
+
+  const delUsers = JSON.parse(appStorage.getItem(DELETED_USERS_KEY) || '[]');
+  const cleanDelUsers = delUsers.filter(x => {
+    const value = String(x || '').trim();
+    return value && value !== username && value.toUpperCase() !== username && value.toLowerCase() !== username.toLowerCase();
+  });
+  appStorage.setItem(DELETED_USERS_KEY, JSON.stringify(cleanDelUsers));
+
+  const newUser = {
+    id: `USR-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+    username,
+    password,
+    fullName,
+    storeCode,
+    phone,
+    category,
+    area,
+    createdAt: getFormattedDateDDMMYYYY()
+  };
+
+  users.push(newUser);
+  saveUsersToDB(users);
+
+  const docId = String(username).toUpperCase();
+  if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+    dbFirestore.collection('users').doc(docId).set(newUser).catch(e => console.warn(e));
+  }
+  if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+    dbRealtime.ref(`users/${docId}`).set(newUser).catch(e => console.warn(e));
+  }
+  if (typeof pushCentralCloudDB === 'function') {
+    pushCentralCloudDB();
+  }
+
+  showNotif(`USER ${fullName} (${username}) BERHASIL DISIMPAN!`, 'success');
 
   tutupUserModal();
   loadUsersManagement();
@@ -2859,23 +5027,30 @@ function hapusUser(userId) {
   const u = users.find(x => x.id === userId);
   if (!u) return;
 
-  if (u.username.toUpperCase() === currentUser.username.toUpperCase()) {
+  if (currentUser && u.username.toUpperCase() === currentUser.username.toUpperCase()) {
     showNotif('TIDAK DAPAT MENGHAPUS AKUN AKTIF ANDA!', 'error');
     return;
   }
 
   showConfirm(`HAPUS USER '${u.fullName}' (${u.username})?`, () => {
-    const delUsers = JSON.parse(localStorage.getItem(DELETED_USERS_KEY) || '[]');
+    const delUsers = JSON.parse(appStorage.getItem(DELETED_USERS_KEY) || '[]');
     if (!delUsers.includes(userId)) delUsers.push(userId);
-    localStorage.setItem(DELETED_USERS_KEY, JSON.stringify(delUsers));
+    appStorage.setItem(DELETED_USERS_KEY, JSON.stringify(delUsers));
+
+    const docId = String(u.username).toUpperCase();
+    if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+      dbFirestore.collection('users').doc(docId).delete().catch(e => console.warn(e));
+    }
+    if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+      dbRealtime.ref(`users/${docId}`).remove().catch(e => console.warn(e));
+    }
 
     saveUsersToDB(users.filter(x => x.id !== userId));
-    showNotif(`USER ${u.username} DIHAPUS.`, 'info');
+    showNotif(`USER ${u.username} BERHASIL DIHAPUS!`, 'info');
     loadUsersManagement();
   });
 }
 
-// MASTER DATABASE PERMINTAAN FOR ADMIN (SERVICE TSM)
 function loadMasterDbTable() {
   const tbody = document.getElementById('masterDbTableBody');
   if (!tbody) return;
@@ -2903,42 +5078,150 @@ function loadMasterDbTable() {
   }
 
   requests.forEach(r => {
-    let itemsDetailText = r.items.map((i, idx) => `${idx + 1}. ${i.type} | SN:${i.seri} | Item:${i.barang} | Alasan:${i.alasan} (Qty:${i.qty})`).join('<br>');
+    let itemsDetailText = (r.items || []).map((i, idx) => {
+      let dusText = i.dus ? ` | Dus:${i.dus}` : '';
+      return `<div style="padding:3px 0; border-bottom:1px dashed var(--border-color); font-size:12px; line-height:1.4;">
+        <strong>${idx + 1}. ${i.type || '-'}</strong> (SN: <span style="font-family:monospace; color:var(--primary);">${i.seri || '-'}${dusText}</span>)<br>
+        <span style="color:var(--text-main);">${i.barang || '-'}</span> <small style="color:var(--text-muted);">[Alasan: ${i.alasan || '-'}]</small> 
+        <strong style="color:var(--primary);">(Qty: ${i.qty || 1})</strong>
+      </div>`;
+    }).join('');
 
     const tr = document.createElement('tr');
+    if (shouldRowBlinkRed(r)) {
+      tr.className = 'blink-row-red';
+    }
     tr.innerHTML = `
+      <td style="text-align:center;"><input type="checkbox" class="masterDbCheckbox" value="${r.noSurat}" onchange="updateMultiMasterDbBtnState()" style="cursor:pointer; width:16px; height:16px;"></td>
       <td style="font-weight:600; color:var(--primary);">${r.noSurat}</td>
-      <td style="white-space:nowrap;">${r.tanggal}</td>
+      <td style="white-space:nowrap;">${formatDateDDMMYYYYString(r.tanggal)}</td>
       <td>${r.toko} <div style="font-size:11px; color:var(--text-muted);">By: ${r.createdBy}</div></td>
-      <td><span style="color:var(--primary);">${r.area}</span></td>
-      <td>${r.jenis}</td>
-      <td style="font-size:12px; max-width:320px; word-break:break-word;">${itemsDetailText}</td>
+      <td><span style="color:var(--primary); font-weight:600;">${r.area}</span></td>
+      <td><span class="badgeStatus badge-pending" style="font-weight:600;">${r.jenis || 'DEFAULT'}</span></td>
+      <td style="max-width:320px; word-break:break-word;">${itemsDetailText}</td>
       <td>${getBadgeStatus(r.status)}</td>
       <td style="word-break:break-word; max-width:200px;">${r.catatan || '-'}</td>
       <td style="text-align:center;">
-        <button class="btnIcon btnDelete" onclick="hapusDataMaster('${r.noSurat}')" title="HAPUS PERMANEN"><span class="material-symbols-rounded">delete</span></button>
+        <button class="btnIcon btnDelete" onclick="hapusDataMaster('${r.noSurat}')" title="HAPUS DATA"><span class="material-symbols-rounded">delete</span></button>
       </td>
     `;
     tbody.appendChild(tr);
   });
+  updateMultiMasterDbBtnState();
 }
 
-function hapusDataMaster(noSurat) {
-  showConfirm(`ADMIN: HAPUS PERMANEN DATA PERMINTAAN #${noSurat} DARI MASTER DATABASE?`, () => {
-    showLoading('MENGHAPUS DATA MASTER...');
+function toggleSelectAllMasterDb(masterCheckbox) {
+  const isChecked = masterCheckbox ? masterCheckbox.checked : false;
+  const checkboxes = document.querySelectorAll('.masterDbCheckbox');
+  checkboxes.forEach(cb => {
+    cb.checked = isChecked;
+  });
+  updateMultiMasterDbBtnState();
+}
+
+function updateMultiMasterDbBtnState() {
+  const checkboxes = document.querySelectorAll('.masterDbCheckbox:checked');
+  const btn = document.getElementById('btnHapusMultiMasterDb');
+  const selectAll = document.getElementById('selectAllMasterDb');
+  const totalCheckboxes = document.querySelectorAll('.masterDbCheckbox');
+
+  if (selectAll && totalCheckboxes.length > 0) {
+    selectAll.checked = (checkboxes.length === totalCheckboxes.length);
+  }
+
+  if (btn) {
+    if (checkboxes.length > 0) {
+      btn.style.display = 'inline-flex';
+      btn.innerHTML = `<span class="material-symbols-rounded" style="vertical-align:middle; margin-right:4px;">delete_sweep</span> HAPUS (${checkboxes.length}) DATA`;
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+}
+
+function hapusMultiMasterDb() {
+  const selectedCheckboxes = document.querySelectorAll('.masterDbCheckbox:checked');
+  const noSuratList = Array.from(selectedCheckboxes).map(cb => cb.value).filter(Boolean);
+
+  if (noSuratList.length === 0) {
+    showNotif('PILIH MINIMAL 1 DATA PERMINTAAN UNTUK DIHAPUS!', 'warning');
+    return;
+  }
+
+  showConfirm(`ADMIN: YAKIN INGIN MENGHAPUS ${noSuratList.length} DATA PERMINTAAN TERPILIH DARI MASTER DATABASE?`, () => {
+    showLoading('MENGHAPUS DATA TERPILIH...');
     setTimeout(() => {
+      try {
+        const currentReqs = getRequestsFromDB();
+        const updatedReqs = currentReqs.filter(r => !noSuratList.includes(r.noSurat));
+        saveRequestsToDB(updatedReqs);
+
+        noSuratList.forEach(noSurat => {
+          const docId = String(noSurat).replace(/[\/\.]/g, '_');
+          if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+            dbFirestore.collection('requests').doc(docId).delete().catch(err => console.warn('[FIRESTORE DELETE NOTICE]:', err));
+          }
+          if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+            dbRealtime.ref(`requests/${docId}`).remove().catch(err => console.warn('[REALTIME DELETE NOTICE]:', err));
+          }
+        });
+
+        if (typeof pushCentralCloudDB === 'function') {
+          pushCentralCloudDB();
+        }
+
+        hideLoading();
+        showNotif(`BERHASIL MENGHAPUS ${noSuratList.length} DATA PERMINTAAN TERPILIH!`, 'info');
+
+        if (typeof loadMasterDbTable === 'function') loadMasterDbTable();
+        if (typeof loadRiwayat === 'function') loadRiwayat();
+        if (typeof loadDashboard === 'function') loadDashboard();
+      } catch (err) {
+        hideLoading();
+        console.error('[HAPUS MULTI MASTER ERROR]:', err);
+        showNotif('GAGAL MENGHAPUS DATA MULTI TERPILIH!', 'error');
+      }
+    }, 400);
+  });
+}
+window.toggleSelectAllMasterDb = toggleSelectAllMasterDb;
+window.updateMultiMasterDbBtnState = updateMultiMasterDbBtnState;
+window.hapusMultiMasterDb = hapusMultiMasterDb;
+
+function hapusDataMaster(noSurat) {
+  if (!noSurat) return;
+  showConfirm(`ADMIN: HAPUS DATA PERMINTAAN #${noSurat} DARI MASTER DATABASE?`, () => {
+    try {
+      const currentReqs = getRequestsFromDB();
+      const updatedReqs = currentReqs.filter(r => r.noSurat !== noSurat);
+      saveRequestsToDB(updatedReqs);
+
+      const docId = String(noSurat).replace(/[\/\.]/g, '_');
+      if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+        dbFirestore.collection('requests').doc(docId).delete().catch(err => console.warn('[FIRESTORE DELETE NOTICE]:', err));
+      }
+      if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+        dbRealtime.ref(`requests/${docId}`).remove().catch(err => console.warn('[REALTIME DELETE NOTICE]:', err));
+      }
+
+      if (typeof pushCentralCloudDB === 'function') {
+        pushCentralCloudDB();
+      }
+
       hideLoading();
-      const requests = getRequestsFromDB().filter(r => r.noSurat !== noSurat);
-      saveRequestsToDB(requests);
-      showNotif(`PERMINTAAN #${noSurat} BERHASIL DIHAPUS DARI MASTER DATABASE!`, 'info');
-      loadMasterDbTable();
-      loadRiwayat();
-      loadDashboard();
-    }, 300);
+      showNotif(`PERMINTAAN #${noSurat} BERHASIL DIHAPUS!`, 'info');
+      
+      if (typeof loadMasterDbTable === 'function') loadMasterDbTable();
+      if (typeof loadRiwayat === 'function') loadRiwayat();
+      if (typeof loadDashboard === 'function') loadDashboard();
+    } catch (err) {
+      hideLoading();
+      console.error('[HAPUS MASTER ERROR]:', err);
+      showNotif('GAGAL MENGHAPUS DATA MASTER!', 'error');
+    }
   });
 }
 
-// GENUINE .XLSX EXPORT ENGINE FOR ADMIN MASTER DATABASE
 function downloadMasterExcel() {
   const data = getRequestsFromDB();
   if (data.length === 0) {
@@ -2990,7 +5273,6 @@ function downloadMasterExcel() {
   }, 400);
 }
 
-// UPLOAD & PARSE DYNAMIC 2-COLUMN EXCEL LOOKUP FILE (BEBAS COPAS: KOLOM A = KODE/PREFIX SERI, KOLOM B = TYPE/NAMA BARANG)
 function prosesUploadExcelLookup(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -3018,7 +5300,6 @@ function prosesUploadExcelLookup(event) {
           const colA = String(row[0] !== undefined && row[0] !== null ? row[0] : '').trim().toUpperCase();
           const colB = String(row[1] !== undefined && row[1] !== null ? row[1] : '').trim().toUpperCase();
 
-          // Skip header row if contains KODE, TYPE, SERI, BARANG, NAMA
           if (idx === 0 && (colA.includes('KODE') || colB.includes('TYPE') || colA.includes('SERI') || colB.includes('BARANG') || colB.includes('NAMA'))) return;
 
           if (colA && colB) {
@@ -3029,17 +5310,28 @@ function prosesUploadExcelLookup(event) {
       });
 
       if (count > 0) {
-        const existingMap = JSON.parse(localStorage.getItem(KODE_UNIT_MAP_KEY) || '{}');
+        const existingMap = JSON.parse(appStorage.getItem(KODE_UNIT_MAP_KEY) || '{}');
         const updatedMap = { ...existingMap, ...newLookup };
-        localStorage.setItem(KODE_UNIT_MAP_KEY, JSON.stringify(updatedMap));
+        appStorage.setItem(KODE_UNIT_MAP_KEY, JSON.stringify(updatedMap));
 
-        // PUSH UPDATED EXCEL LOOKUP MAPPING TO GLOBAL CLOUD DATABASE WORLDWIDE
-        pushCentralCloudDB();
+        // SYNC LANGSUNG KE FIRESTORE CLOUD & REALTIME DB (EFFICIENT SINGLE DOC SAVE)
+        if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+          dbFirestore.collection('app_settings').doc('config').set({
+            kodeUnitMap: updatedMap
+          }, { merge: true }).catch(e => console.warn('[FIRESTORE LOOKUP SYNC]:', e));
+        }
+        if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+          dbRealtime.ref('app_settings/kodeUnitMap').set(updatedMap).catch(e => console.warn('[RTDB LOOKUP SYNC]:', e));
+        }
+
+        if (typeof pushCentralCloudDB === 'function') {
+          pushCentralCloudDB();
+        }
 
         hideLoading();
-        showNotif(`BERHASIL MEMPERBARUI ${count} KODE SERI BARANG!`, 'info');
+        showNotif(`BERHASIL MEMPERBARUI ${count} KODE SERI BARANG & TERSINKRON KE DATABASE!`, 'info');
         const statusEl = document.getElementById('lookupUploadStatus');
-        if (statusEl) statusEl.textContent = `✓ ${count} KODE SERI BERHASIL DITAMBAHKAN!`;
+        if (statusEl) statusEl.textContent = `✓ ${count} KODE SERI BERHASIL DITAMBAHKAN & TERKIRIM KE CLOUD DATABASE!`;
       } else {
         hideLoading();
         showNotif('TIDAK ADA DATA VALID DENGAN 2 KOLOM (KOLOM A & KOLOM B)!', 'warning');
@@ -3053,25 +5345,63 @@ function prosesUploadExcelLookup(event) {
   event.target.value = '';
 }
 
-// PROFILE MODAL
 function bukaAkun() {
   if (!currentUser) return;
-  document.getElementById('akunNama').value = currentUser.fullName;
-  document.getElementById('akunHP').value = currentUser.phone || '-';
-  document.getElementById('akunArea').value = `${currentUser.area} - ${AREA_MAP[currentUser.area] || currentUser.area}`;
-  document.getElementById('akunKategori').value = currentUser.category;
-  document.getElementById('akunPassword').value = '';
+
+  if (typeof modeEdit !== 'undefined' && modeEdit) {
+    showConfirm('KELUAR DARI MENU EDIT?', () => {
+      if (typeof bersihkanForm === 'function') bersihkanForm();
+      closeAllPopups();
+      prosesBukaAkun();
+    });
+    return;
+  }
+
+  prosesBukaAkun();
+}
+
+function prosesBukaAkun() {
+  const elNama = document.getElementById('akunNama');
+  const elHP = document.getElementById('akunHP');
+  const elArea = document.getElementById('akunArea');
+  const elKat = document.getElementById('akunKategori');
+  const elPass = document.getElementById('akunPassword');
+
+  if (elNama) elNama.value = currentUser.fullName || '';
+  if (elHP) elHP.value = currentUser.phone || '-';
+  if (elArea) elArea.value = `${currentUser.area} - ${AREA_MAP[currentUser.area] || currentUser.area}`;
+  if (elKat) elKat.value = currentUser.category || '';
+  if (elPass) elPass.value = '';
 
   const menuTTD = document.getElementById('menuTTD');
   if (menuTTD) {
     menuTTD.style.display = (currentUser.category === 'SERVICE' || currentUser.category === 'DM') ? 'block' : 'none';
   }
 
-  document.getElementById('popupAkun').classList.add('show');
+  const isToko = (currentUser.category === 'TOKO');
+  const isAdmin = currentUser && (currentUser.category === 'ADMIN' || (currentUser.username && currentUser.username.toUpperCase() === 'ADMIN'));
+  
+  const menuKelolaTokoAkun = document.getElementById('menuKelolaTokoAkun');
+  if (menuKelolaTokoAkun) {
+    menuKelolaTokoAkun.style.display = isToko ? 'none' : 'block';
+  }
+
+  const adminWrap = document.getElementById('adminHapusNotifWrap');
+  if (adminWrap) {
+    adminWrap.style.display = isAdmin ? 'block' : 'none';
+  }
+
+  const modal = document.getElementById('popupAkun');
+  if (modal) modal.classList.add('show');
+  if (typeof pushPopupHistoryState === 'function') pushPopupHistoryState();
 }
 
+window.bukaAkun = bukaAkun;
+window.prosesBukaAkun = prosesBukaAkun;
+
 function tutupAkun() {
-  document.getElementById('popupAkun').classList.remove('show');
+  const modal = document.getElementById('popupAkun');
+  if (modal) modal.classList.remove('show');
 }
 
 function simpanAkun() {
@@ -3095,10 +5425,25 @@ function simpanAkun() {
 
       saveUsersToDB(users);
       currentUser = users[idx];
-      localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
+      appStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
 
-      showNotif('PROFIL AKUN BERHASIL DIPERBARUI!', 'info');
-      tutupAkun();
+      showNotif('PROFIL BERHASIL DIPERBARUI!', 'info');
+
+      const akunArea = document.getElementById('akunArea');
+      if (akunArea) akunArea.value = `${currentUser.area} - ${AREA_MAP[currentUser.area] || currentUser.area}`;
+
+      const akunKategori = document.getElementById('akunKategori');
+      if (akunKategori) akunKategori.value = currentUser.category;
+
+      const akunNama = document.getElementById('akunNama');
+      if (akunNama) akunNama.value = currentUser.fullName;
+
+      const akunHP = document.getElementById('akunHP');
+      if (akunHP) akunHP.value = currentUser.phone || '-';
+
+      const akunPassword = document.getElementById('akunPassword');
+      if (akunPassword) akunPassword.value = '';
+
       loadDashboard();
       if (document.getElementById('userTableBody')) {
         loadUsersManagement();
@@ -3107,7 +5452,6 @@ function simpanAkun() {
   });
 }
 
-// MODAL TAMBAH TOKO ENGINE FOR ALL USERS
 function bukaModalTambahToko() {
   if (!currentUser) return;
   const modalAreaText = document.getElementById('tokoModalAreaText');
@@ -3121,6 +5465,7 @@ function bukaModalTambahToko() {
   if (popup) {
     popup.style.display = 'flex';
     popup.classList.add('show');
+    pushPopupHistoryState();
   }
 }
 
@@ -3176,55 +5521,84 @@ function simpanTokoBaru() {
     return;
   }
 
-  // Remove from DELETED_STORES_KEY blacklist if previously deleted
-  const storeKey = `${namaToko}_${currentUser.area}`;
-  let deletedStoreKeys = JSON.parse(localStorage.getItem(DELETED_STORES_KEY) || '[]');
-  if (deletedStoreKeys.includes(storeKey)) {
-    deletedStoreKeys = deletedStoreKeys.filter(k => k !== storeKey);
-    localStorage.setItem(DELETED_STORES_KEY, JSON.stringify(deletedStoreKeys));
-  }
+  showLoading('MENYIMPAN TOKO BARU...');
+  setTimeout(async () => {
+    try {
+      const storeKey = `${namaToko}_${currentUser.area}`;
+      let deletedStoreKeys = JSON.parse(appStorage.getItem(DELETED_STORES_KEY) || '[]');
+      if (deletedStoreKeys.includes(storeKey)) {
+        deletedStoreKeys = deletedStoreKeys.filter(k => k !== storeKey);
+        appStorage.setItem(DELETED_STORES_KEY, JSON.stringify(deletedStoreKeys));
+      }
 
-  const generatedCode = generateStoreCode(namaToko);
-  const newId = `STK-${Date.now()}`;
+      const generatedCode = generateStoreCode(namaToko);
+      const newId = `STK-${Date.now()}`;
 
-  // 1. Add to STORES_DB_KEY
-  const localStores = JSON.parse(localStorage.getItem(STORES_DB_KEY) || '[]');
-  const newStore = {
-    id: newId,
-    fullName: namaToko,
-    area: currentUser.area,
-    storeCode: generatedCode,
-    createdBy: currentUser.fullName
-  };
-  localStores.push(newStore);
-  localStorage.setItem(STORES_DB_KEY, JSON.stringify(localStores));
+      const localStores = JSON.parse(appStorage.getItem(STORES_DB_KEY) || '[]');
+      const newStore = {
+        id: newId,
+        fullName: namaToko,
+        area: currentUser.area,
+        storeCode: generatedCode,
+        createdBy: currentUser.fullName
+      };
+      localStores.push(newStore);
+      appStorage.setItem(STORES_DB_KEY, JSON.stringify(localStores));
 
-  // 2. Add directly into USERS_DB_KEY (Database Admin)
-  const users = getUsersFromDB();
-  const safeUsername = namaToko.replace(/[^A-Z0-9]/gi, '_').toUpperCase();
-  if (!users.some(u => u.username.toUpperCase() === safeUsername)) {
-    const newUserAcc = {
-      id: newId,
-      username: safeUsername,
-      password: '123',
-      fullName: namaToko,
-      storeCode: generatedCode,
-      phone: '-',
-      category: 'TOKO',
-      area: currentUser.area,
-      createdAt: getFormattedDateDDMMYYYY()
-    };
-    users.push(newUserAcc);
-    saveUsersToDB(users);
-  }
+      const users = getUsersFromDB();
+      const safeUsername = namaToko.replace(/[^A-Z0-9]/gi, '_').toUpperCase();
+      let newUserAcc = null;
+      if (!users.some(u => u.username.toUpperCase() === safeUsername)) {
+        newUserAcc = {
+          id: newId,
+          username: safeUsername,
+          password: '123',
+          fullName: namaToko,
+          storeCode: generatedCode,
+          phone: '-',
+          category: 'TOKO',
+          area: currentUser.area,
+          createdAt: getFormattedDateDDMMYYYY()
+        };
+        users.push(newUserAcc);
+        saveUsersToDB(users);
+      }
 
-  showNotif(`BERHASIL DITAMBAHKAN!`, 'info');
-  if (inputEl) inputEl.value = '';
-  loadDaftarTokoModal();
-  loadForm();
-  if (document.getElementById('userTableBody')) {
-    loadUsersManagement();
-  }
+      // SINKRONKAN LANGSUNG KE FIREBASE FIRESTORE & REALTIME DB
+      if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+        await dbFirestore.collection('stores').doc(newId).set(newStore).catch(e => console.warn(e));
+        if (newUserAcc) {
+          await dbFirestore.collection('users').doc(safeUsername).set(newUserAcc).catch(e => console.warn(e));
+        }
+      }
+      if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+        await dbRealtime.ref(`stores/${newId}`).set(newStore).catch(e => console.warn(e));
+        if (newUserAcc) {
+          await dbRealtime.ref(`users/${safeUsername}`).set(newUserAcc).catch(e => console.warn(e));
+        }
+      }
+
+      if (typeof pushCentralCloudDB === 'function') {
+        await pushCentralCloudDB();
+      }
+
+      // AMBIL DATA TERBARU DARI CLOUD SEHINGGA DATA LANGSUNG MASUK KE DATABASE & MENU USER ADMIN
+      if (typeof syncAllDataToCache === 'function') {
+        await syncAllDataToCache().catch(() => {});
+      }
+
+      hideLoading();
+      showNotif(`TOKO '${namaToko}' BERHASIL DITAMBAHKAN!`, 'success');
+      if (inputEl) inputEl.value = '';
+      if (typeof loadDaftarTokoModal === 'function') loadDaftarTokoModal();
+      if (typeof updateStoreDropdownOptions === 'function') updateStoreDropdownOptions(namaToko);
+      if (typeof loadUsersManagement === 'function') loadUsersManagement();
+    } catch (err) {
+      hideLoading();
+      console.error('[SIMPAN TOKO ERROR]:', err);
+      showNotif('GAGAL MENYIMPAN TOKO!', 'error');
+    }
+  }, 300);
 }
 
 function hapusTokoCustom(id) {
@@ -3234,34 +5608,57 @@ function hapusTokoCustom(id) {
   const storeArea = store ? store.area : currentUser.area;
 
   showConfirm(`HAPUS TOKO '${name}' DARI DAFTAR & DATABASE ADMIN?`, () => {
-    // 1. Remove from STORES_DB_KEY
-    const localStores = JSON.parse(localStorage.getItem(STORES_DB_KEY) || '[]');
-    const updatedLocal = localStores.filter(s => s.id !== id && s.fullName.toUpperCase() !== name.toUpperCase());
-    localStorage.setItem(STORES_DB_KEY, JSON.stringify(updatedLocal));
+    showLoading('MENGHAPUS TOKO...');
+    setTimeout(async () => {
+      try {
+        const localStores = JSON.parse(appStorage.getItem(STORES_DB_KEY) || '[]');
+        const updatedLocal = localStores.filter(s => s.id !== id && s.fullName.toUpperCase() !== name.toUpperCase());
+        appStorage.setItem(STORES_DB_KEY, JSON.stringify(updatedLocal));
 
-    // 2. Add to DELETED_STORES_KEY blacklist
-    const deletedStoreKeys = JSON.parse(localStorage.getItem(DELETED_STORES_KEY) || '[]');
-    const storeKey = `${name.toUpperCase()}_${storeArea}`;
-    if (!deletedStoreKeys.includes(storeKey)) {
-      deletedStoreKeys.push(storeKey);
-      localStorage.setItem(DELETED_STORES_KEY, JSON.stringify(deletedStoreKeys));
-    }
+        const deletedStoreKeys = JSON.parse(appStorage.getItem(DELETED_STORES_KEY) || '[]');
+        const storeKey = `${name.toUpperCase()}_${storeArea}`;
+        if (!deletedStoreKeys.includes(storeKey)) {
+          deletedStoreKeys.push(storeKey);
+          appStorage.setItem(DELETED_STORES_KEY, JSON.stringify(deletedStoreKeys));
+        }
 
-    // 3. Remove directly from USERS_DB_KEY (Database Admin)
-    const users = getUsersFromDB();
-    const updatedUsers = users.filter(u => u.id !== id && !(u.category === 'TOKO' && u.fullName.toUpperCase() === name.toUpperCase()));
-    saveUsersToDB(updatedUsers);
+        const users = getUsersFromDB();
+        const updatedUsers = users.filter(u => u.id !== id && !(u.category === 'TOKO' && u.fullName.toUpperCase() === name.toUpperCase()));
+        saveUsersToDB(updatedUsers);
 
-    showNotif(`BERHASIL DIHAPUS!`, 'info');
-    loadDaftarTokoModal();
-    loadForm();
-    if (document.getElementById('userTableBody')) {
-      loadUsersManagement();
-    }
+        // HAPUS DOKUMEN LANGSUNG DARI FIREBASE ONLINE
+        const safeUsername = name.replace(/[^A-Z0-9]/gi, '_').toUpperCase();
+        if (typeof dbFirestore !== 'undefined' && dbFirestore) {
+          await dbFirestore.collection('stores').doc(id).delete().catch(e => console.warn(e));
+          await dbFirestore.collection('users').doc(safeUsername).delete().catch(e => console.warn(e));
+        }
+        if (typeof dbRealtime !== 'undefined' && dbRealtime) {
+          await dbRealtime.ref(`stores/${id}`).remove().catch(e => console.warn(e));
+          await dbRealtime.ref(`users/${safeUsername}`).remove().catch(e => console.warn(e));
+        }
+
+        if (typeof pushCentralCloudDB === 'function') {
+          await pushCentralCloudDB();
+        }
+
+        if (typeof syncAllDataToCache === 'function') {
+          await syncAllDataToCache().catch(() => {});
+        }
+
+        hideLoading();
+        showNotif(`TOKO '${name}' BERHASIL DIHAPUS!`, 'info');
+        if (typeof loadDaftarTokoModal === 'function') loadDaftarTokoModal();
+        if (typeof updateStoreDropdownOptions === 'function') updateStoreDropdownOptions();
+        if (typeof loadUsersManagement === 'function') loadUsersManagement();
+      } catch (err) {
+        hideLoading();
+        console.error('[HAPUS TOKO ERROR]:', err);
+        showNotif('GAGAL MENGHAPUS TOKO!', 'error');
+      }
+    }, 300);
   });
 }
 
-// GENUINE .XLSX EXPORT ENGINE FOR ACCESSIBLE REQUESTS WITH ITEM DETAILS
 function downloadExcel() {
   const data = getAccessibleRequests();
   if (data.length === 0) {
@@ -3333,61 +5730,144 @@ function downloadExcel() {
   }, 400);
 }
 
-// UTILITY DIALOGS & OVERLAYS
+function closeAllPopups() {
+  const allOverlays = document.querySelectorAll('.popupOverlay, #imageViewer, #rejectOverlay, #confirmOverlay, #pdfModal, #popupDetail, #popupAkun, #popupUserForm, #popupTTD, #popupNotifList, #popupBantuan');
+  allOverlays.forEach(el => {
+    if (el) {
+      el.style.display = 'none';
+      el.classList.remove('show');
+    }
+  });
+}
+window.closeAllPopups = closeAllPopups;
+
 function showConfirm(msg, callback) {
-  document.getElementById('confirmMessage').innerHTML = msg;
+  const msgEl = document.getElementById('confirmMessage');
+  if (msgEl) msgEl.innerHTML = msg;
   confirmCallback = callback;
-  document.getElementById('confirmOverlay').style.display = 'flex';
+  const modal = document.getElementById('confirmOverlay');
+  if (modal) modal.style.display = 'flex';
+  pushPopupHistoryState();
 }
 
 function closeConfirm() {
-  document.getElementById('confirmOverlay').style.display = 'none';
+  const modal = document.getElementById('confirmOverlay');
+  if (modal) modal.style.display = 'none';
   confirmCallback = null;
 }
 
 function confirmYes() {
-  if (typeof confirmCallback === 'function') {
-    confirmCallback();
-  }
+  const cb = confirmCallback;
+  confirmCallback = null;
   closeConfirm();
+  closeAllPopups();
+  if (typeof cb === 'function') {
+    cb();
+  }
 }
 
 function showNotif(msg, type = 'info') {
-  document.getElementById('popupNotifMessage').textContent = msg;
-  document.getElementById('popupNotifTitle').textContent = type.toUpperCase();
-  document.getElementById('popupNotif').style.display = 'flex';
+  const notifOverlay = document.getElementById('popupNotif');
+  const notifMessage = document.getElementById('popupNotifMessage');
+  const notifCard = document.getElementById('popupNotifCard');
+  
+  const notifIcon = document.getElementById('popupNotifIcon');
+  const notifTitle = document.getElementById('popupNotifTitle');
+
+  if (!notifOverlay) return;
+  if (notifMessage) notifMessage.textContent = msg || 'INFORMASI SISTEM';
+
+  const lowerType = (type || 'info').toLowerCase();
+  if (notifCard) {
+    if (lowerType.includes('error') || lowerType.includes('salah') || lowerType.includes('gagal') || lowerType.includes('danger')) {
+      notifCard.className = 'popupNotifCard notif-error';
+      if(notifIcon) notifIcon.textContent = 'cancel';
+      if(notifTitle) notifTitle.textContent = 'GAGAL';
+    } else if (lowerType.includes('warning') || lowerType.includes('peringatan')) {
+      notifCard.className = 'popupNotifCard notif-warning';
+      if(notifIcon) notifIcon.textContent = 'warning';
+      if(notifTitle) notifTitle.textContent = 'PERINGATAN';
+    } else if (lowerType.includes('success') || lowerType.includes('berhasil')) {
+      notifCard.className = 'popupNotifCard notif-success';
+      if(notifIcon) notifIcon.textContent = 'check_circle';
+      if(notifTitle) notifTitle.textContent = 'BERHASIL';
+    } else {
+      notifCard.className = 'popupNotifCard notif-info';
+      if(notifIcon) notifIcon.textContent = 'info';
+      if(notifTitle) notifTitle.textContent = 'INFORMASI';
+    }
+  }
+
+  notifOverlay.style.display = 'flex';
 }
 
 function closePopup() {
-  document.getElementById('popupNotif').style.display = 'none';
+  const notifOverlay = document.getElementById('popupNotif');
+  if (notifOverlay) notifOverlay.style.display = 'none';
+
+  const activePage = typeof getCurrentActivePageId === 'function' ? getCurrentActivePageId() : 'dashboardPage';
+  if (typeof aturTampilanLonceng === 'function') {
+    aturTampilanLonceng(activePage);
+  }
 }
 
-function showLoading(text) {
-  const textEl = document.getElementById('loadingText');
-  if (textEl) textEl.textContent = text || 'MEMPROSES...';
-  document.getElementById('loadingOverlay').style.display = 'flex';
+function showLoading() {
+  const modal = document.getElementById('loadingOverlay');
+  if (modal) modal.style.display = 'flex';
 }
 
 function hideLoading() {
-  document.getElementById('loadingOverlay').style.display = 'none';
+  const modal = document.getElementById('loadingOverlay');
+  if (modal) modal.style.display = 'none';
 }
+
+let currentZoom = 1;
 
 function zoomFoto(src) {
-  document.getElementById('viewerImage').src = src;
-  document.getElementById('imageViewer').style.display = 'flex';
+  currentZoom = 1;
+  const img = document.getElementById('viewerImage');
+  if (img) {
+    img.src = src;
+    img.style.transform = `scale(${currentZoom})`;
+  }
+  const modal = document.getElementById('imageViewer');
+  if (modal) modal.style.display = 'flex';
+  
+  if (typeof pushPopupHistoryState === 'function') {
+    pushPopupHistoryState();
+  }
 }
 
-/* ======================================================
-   UNIVERSAL DRAGGABLE FLOATING BUTTON ENGINE (HP TOUCH & MOUSE)
-   ====================================================== */
+function tutupImageViewer() {
+  const modal = document.getElementById('imageViewer');
+  if (modal) modal.style.display = 'none';
+}
+
+function zoomImage(step) {
+  currentZoom += step;
+  if (currentZoom < 0.2) currentZoom = 0.2;
+  if (currentZoom > 5) currentZoom = 5;
+  const img = document.getElementById('viewerImage');
+  if (img) {
+    img.style.transform = `scale(${currentZoom})`;
+  }
+}
+
+function resetZoom() {
+  currentZoom = 1;
+  const img = document.getElementById('viewerImage');
+  if (img) {
+    img.style.transform = `scale(${currentZoom})`;
+  }
+}
+
 function initDraggableElement(element, storageKey) {
   const el = typeof element === 'string' ? document.getElementById(element) : element;
   if (!el) return;
 
   el.classList.add('draggable-btn');
 
-  // Restore saved position if exists
-  const savedPos = localStorage.getItem(storageKey);
+  const savedPos = appStorage.getItem(storageKey);
   if (savedPos) {
     try {
       const pos = JSON.parse(savedPos);
@@ -3444,13 +5924,10 @@ function initDraggableElement(element, storageKey) {
       if (e.cancelable) e.preventDefault();
 
       let newLeft = initialLeft + deltaX;
-      let newTop = initialTop + deltaY;
+      let newTop = initialTop; 
 
       const maxX = window.innerWidth - (el.offsetWidth || 48);
-      const maxY = window.innerHeight - (el.offsetHeight || 48);
-
       newLeft = Math.max(0, Math.min(newLeft, maxX));
-      newTop = Math.max(0, Math.min(newTop, maxY));
 
       el.style.position = 'fixed';
       el.style.left = newLeft + 'px';
@@ -3470,7 +5947,7 @@ function initDraggableElement(element, storageKey) {
 
     if (isDragging) {
       const rect = el.getBoundingClientRect();
-      localStorage.setItem(storageKey, JSON.stringify({ left: rect.left, top: rect.top }));
+      appStorage.setItem(storageKey, JSON.stringify({ left: rect.left, top: rect.top }));
 
       const preventClick = function(evt) {
         evt.stopImmediatePropagation();
@@ -3486,13 +5963,310 @@ function initDraggableElement(element, storageKey) {
 }
 
 function initAllDraggableButtons() {
-  setTimeout(() => {
-    initDraggableElement('helpButton', 'POS_HELP_BUTTON_V5');
-    initDraggableElement(document.querySelector('.theme-toggle-btn'), 'POS_THEME_BUTTON_V5');
-    initDraggableElement('notifBellBtn', 'POS_NOTIF_BELL_BUTTON_V5');
-  }, 100);
+  // Fixed top-header layout per user instruction (non-draggable)
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  initAllDraggableButtons();
-});
+(function() {
+  const styleTag = document.createElement('style');
+  styleTag.innerHTML = `
+    body:has(#loginPage.active) #notifBellBtn,
+    body:has(#loginPage.active) .notif-bell-btn,
+    body:has(#loginPage.active) #helpButton,
+    body:has(#loginPage.active) .helpButton,
+    body:has(#loginPage.active) #firebaseOnlineDot,
+    body:has(.page.active:not(#dashboardPage)) #notifBellBtn,
+    body:has(.page.active:not(#dashboardPage)) #helpButton,
+    body:has(.page.active:not(#dashboardPage)) #firebaseOnlineDot {
+      display: none !important;
+    }
+  `;
+  document.head.appendChild(styleTag);
+})();
+
+function hapusSemuaDataLokal() {
+  showConfirm('YAKIN INGIN MENGHAPUS SEMUA DATA LOKAL & CACHE? (Aplikasi akan keluar dan dimuat ulang)', () => {
+    showLoading('');
+    
+    setTimeout(async () => {
+      try {
+        if (window.localStorage) {
+          localStorage.clear();
+        }
+        if (window.sessionStorage) {
+          sessionStorage.clear();
+        }
+        if (window.appStorage && typeof window.appStorage.clear === 'function') {
+          window.appStorage.clear();
+        }
+        if (typeof caches !== 'undefined' && caches.keys) {
+          const cacheNames = await caches.keys();
+          for (let name of cacheNames) {
+            await caches.delete(name);
+          }
+        }
+        currentUser = null;
+        window.location.reload(true);
+      } catch (error) {
+        hideLoading();
+        console.error('Gagal menghapus data lokal:', error);
+        showNotif('TERJADI KESALAHAN SAAT MENGHAPUS DATA!', 'error');
+      }
+    }, 800);
+  });
+}
+
+// =============================================================================
+// GLOBAL KEYBOARD NAVIGATION:
+// 1. DASHBOARD & RIWAYAT / DETAIL DATA -> ARROW UP/DOWN & PAGE UP/DOWN SCROLLS TABLE
+// 2. INPUT DATA FORM -> ARROW KEYS NAVIGATE ALL COLUMNS & ROWS, ENTER MOVES TO NEXT FIELD
+// =============================================================================
+function setupGlobalKeyboardNavigation() {
+  document.addEventListener('keydown', (e) => {
+    const activeEl = document.activeElement;
+    const isInput = activeEl && (
+      activeEl.tagName === 'INPUT' ||
+      activeEl.tagName === 'SELECT' ||
+      activeEl.tagName === 'TEXTAREA'
+    );
+
+    // -------------------------------------------------------------------------
+    // CASE A: INSIDE INPUT FORM -> ARROW KEYS NAVIGATE COLUMNS/ROWS & ENTER MOVES TO NEXT FIELD
+    // -------------------------------------------------------------------------
+    if (isInput) {
+      // 1. ENTER KEY: MOVE TO NEXT INPUT FIELD (OR AUTOMATICALLY ADD NEW ROW IF AT END OF FORM)
+      if (e.key === 'Enter') {
+        // Skip textareas if user wants new line
+        if (activeEl.tagName === 'TEXTAREA' && !e.ctrlKey && !e.shiftKey) {
+          return;
+        }
+
+        e.preventDefault();
+
+        // Login form submit handling
+        if (activeEl.id === 'username' || activeEl.id === 'password') {
+          if (typeof window.prosesLogin === 'function') window.prosesLogin();
+          return;
+        }
+
+        const formContainer = activeEl.closest('#detailContainer') || activeEl.closest('form') || activeEl.closest('.formWrap') || activeEl.closest('#popupDetail') || document;
+        const allInputs = Array.from(formContainer.querySelectorAll('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'));
+        const currIndex = allInputs.indexOf(activeEl);
+
+        if (currIndex !== -1 && currIndex < allInputs.length - 1) {
+          const nextEl = allInputs[currIndex + 1];
+          nextEl.focus();
+          if (typeof nextEl.select === 'function' && nextEl.tagName === 'INPUT') nextEl.select();
+        } else if (activeEl.closest('.detailRow')) {
+          // If at the last input of the last row in Input Data, automatically add new row!
+          if (typeof tambahRow === 'function') {
+            tambahRow();
+            setTimeout(() => {
+              const rows = document.querySelectorAll('#detailContainer .detailRow');
+              if (rows.length > 0) {
+                const lastRow = rows[rows.length - 1];
+                const firstInput = lastRow.querySelector('input');
+                if (firstInput) {
+                  firstInput.focus();
+                  if (typeof firstInput.select === 'function') firstInput.select();
+                }
+              }
+            }, 60);
+          }
+        }
+        return;
+      }
+
+      // 2. ARROW KEYS NAVIGATION IN INPUT ROWS & COLUMNS
+      const row = activeEl.closest('.detailRow');
+      if (row) {
+        const container = row.parentElement;
+        const allRows = Array.from(container.querySelectorAll('.detailRow'));
+        const rowIndex = allRows.indexOf(row);
+        const rowInputs = Array.from(row.querySelectorAll('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'));
+        const colIndex = rowInputs.indexOf(activeEl);
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (rowIndex < allRows.length - 1) {
+            const nextRow = allRows[rowIndex + 1];
+            const nextRowInputs = Array.from(nextRow.querySelectorAll('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'));
+            const targetInput = nextRowInputs[colIndex] !== undefined ? nextRowInputs[colIndex] : nextRowInputs[nextRowInputs.length - 1];
+            if (targetInput) {
+              targetInput.focus();
+              if (typeof targetInput.select === 'function' && targetInput.tagName === 'INPUT') targetInput.select();
+            }
+          }
+          return;
+        }
+
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (rowIndex > 0) {
+            const prevRow = allRows[rowIndex - 1];
+            const prevRowInputs = Array.from(prevRow.querySelectorAll('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'));
+            const targetInput = prevRowInputs[colIndex] !== undefined ? prevRowInputs[colIndex] : prevRowInputs[prevRowInputs.length - 1];
+            if (targetInput) {
+              targetInput.focus();
+              if (typeof targetInput.select === 'function' && targetInput.tagName === 'INPUT') targetInput.select();
+            }
+          }
+          return;
+        }
+
+        if (e.key === 'ArrowRight') {
+          const isText = activeEl.type === 'text' || activeEl.type === 'search';
+          const isAtEnd = !isText || activeEl.selectionEnd === activeEl.value.length;
+          if (isAtEnd) {
+            if (colIndex < rowInputs.length - 1) {
+              e.preventDefault();
+              const nextInput = rowInputs[colIndex + 1];
+              nextInput.focus();
+              if (typeof nextInput.select === 'function' && nextInput.tagName === 'INPUT') nextInput.select();
+            } else if (rowIndex < allRows.length - 1) {
+              e.preventDefault();
+              const nextRow = allRows[rowIndex + 1];
+              const firstInput = nextRow.querySelector('input');
+              if (firstInput) {
+                firstInput.focus();
+                if (typeof firstInput.select === 'function') firstInput.select();
+              }
+            }
+          }
+          return;
+        }
+
+        if (e.key === 'ArrowLeft') {
+          const isText = activeEl.type === 'text' || activeEl.type === 'search';
+          const isAtStart = !isText || activeEl.selectionStart === 0;
+          if (isAtStart) {
+            if (colIndex > 0) {
+              e.preventDefault();
+              const prevInput = rowInputs[colIndex - 1];
+              prevInput.focus();
+              if (typeof prevInput.select === 'function' && prevInput.tagName === 'INPUT') prevInput.select();
+            } else if (rowIndex > 0) {
+              e.preventDefault();
+              const prevRow = allRows[rowIndex - 1];
+              const prevRowInputs = Array.from(prevRow.querySelectorAll('input'));
+              const lastInput = prevRowInputs[prevRowInputs.length - 1];
+              if (lastInput) {
+                lastInput.focus();
+                if (typeof lastInput.select === 'function') lastInput.select();
+              }
+            }
+          }
+          return;
+        }
+      }
+
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // CASE B: OUTSIDE INPUT FORM (DASHBOARD, RIWAYAT/DETAIL DATA, MASTER DB)
+    // ARROW UP / ARROW DOWN & PAGE UP / PAGE DOWN SCROLL THE ACTIVE TABLE!
+    // -------------------------------------------------------------------------
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'PageDown' || e.key === 'PageUp') {
+      let scrollTarget = null;
+      
+      const popupDetail = document.getElementById('popupDetail');
+      if (popupDetail && popupDetail.style.display !== 'none' && popupDetail.offsetWidth > 0) {
+        scrollTarget = popupDetail.querySelector('.popupTableScroll') || popupDetail.querySelector('.popupContent') || popupDetail.querySelector('#popupMessage');
+      }
+
+      if (!scrollTarget) {
+        const activePage = document.querySelector('.pageSection.active') || document.querySelector('.page.active');
+        if (activePage) {
+          scrollTarget = activePage.querySelector('.tableWrap') || activePage.querySelector('.popupTableScroll');
+        }
+      }
+
+      if (!scrollTarget) {
+        scrollTarget = document.querySelector('.tableWrap');
+      }
+
+      if (scrollTarget) {
+        e.preventDefault();
+        const step = (e.key === 'PageDown' || e.key === 'PageUp') ? 260 : 60;
+        const direction = (e.key === 'ArrowDown' || e.key === 'PageDown') ? 1 : -1;
+        scrollTarget.scrollTop += (step * direction);
+      }
+    }
+  });
+}
+
+// INITIALIZE GLOBAL KEYBOARD NAVIGATION
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupGlobalKeyboardNavigation);
+} else {
+  setupGlobalKeyboardNavigation();
+}
+
+async function hapusSemuaNotifFirebaseDanLokal() {
+  const isUserAdmin = currentUser && (currentUser.category === 'ADMIN' || (currentUser.username && currentUser.username.toUpperCase() === 'ADMIN'));
+  if (!isUserAdmin) {
+    showNotif('FITUR HANYA DAPAT DIAKSES OLEH ADMIN!', 'error');
+    return;
+  }
+
+  showConfirm('YAKIN INGIN MENGHAPUS SEMUA NOTIFIKASI & CHAT DI DATABASE FIREBASE DAN SEMUA PERANGKAT?\n\n(Semua notifikasi dan pesan chat di cloud Firebase & lokal semua perangkat akan dibersihkan total!)', async () => {
+    showLoading('MENGHAPUS SEMUA NOTIFIKASI & CHAT DATABASE...');
+
+    try {
+      appStorage.setItem(NOTIFICATIONS_DB_KEY, JSON.stringify([]));
+      appStorage.setItem(CHAT_DB_KEY, JSON.stringify([]));
+      appStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify([]));
+      appStorage.setItem(CHAT_ROOM_DB_KEY, JSON.stringify([]));
+
+      if (dbFirestore) {
+        try {
+          await dbFirestore.collection('app_settings').doc('config').set({
+            notifications: [],
+            chatMessages: [],
+            chatRooms: [],
+            clearNotifsSignal: Date.now(),
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        } catch (e) {
+          console.warn('Firestore Clear Notifs Error:', e);
+        }
+      }
+
+      if (dbRealtime) {
+        try {
+          await dbRealtime.ref('notifications').set([]);
+          await dbRealtime.ref('chat_messages').set([]);
+          await dbRealtime.ref('chat_rooms').set([]);
+          await dbRealtime.ref('settings/clear_notifs_signal').set(Date.now());
+        } catch (e) {
+          console.warn('Realtime DB Clear Notifs Error:', e);
+        }
+      }
+
+      if (supabase) {
+        try {
+          await supabase.from('notifications').delete().neq('id', '0');
+          await supabase.from('chat_messages').delete().neq('id', '0');
+          await supabase.from('chat_rooms').delete().neq('id', '0');
+        } catch (e) {
+          console.warn('Supabase Clear Notifs Error:', e);
+        }
+      }
+
+      if (typeof updateNotifBellCounter === 'function') updateNotifBellCounter();
+      if (typeof loadNotificationList === 'function') loadNotificationList();
+      
+      const chatBody = document.getElementById('chatMessagesBody');
+      if (chatBody) chatBody.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8; font-size:12px;">BELUM ADA PESAN CHAT</div>';
+
+      hideLoading();
+      showNotif('SEMUA NOTIFIKASI & CHAT DI DATABASE FIREBASE SERTA SEMUA PERANGKAT BERHASIL DIHAPUS!', 'success');
+    } catch (err) {
+      hideLoading();
+      console.error('Gagal menghapus notifikasi cloud:', err);
+      showNotif('GAGAL MENGHAPUS NOTIFIKASI DATABASE: ' + err.message, 'error');
+    }
+  });
+}
+
+window.hapusSemuaNotifFirebaseDanLokal = hapusSemuaNotifFirebaseDanLokal;
